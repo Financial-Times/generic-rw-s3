@@ -16,7 +16,7 @@ or update:
 
 ## Running
 
-TODOcd gen  
+TODO
 
 ## Endpoints
 
