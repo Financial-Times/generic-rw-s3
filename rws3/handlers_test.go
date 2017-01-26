@@ -12,13 +12,14 @@ import (
 func TestAddAdminHandlers(t *testing.T) {
 
 	servicesRouter := mux.NewRouter()
-	var monitoringRouter http.Handler = servicesRouter
-	AddAdminHandlers(&monitoringRouter)
+	AddAdminHandlers(servicesRouter)
 	assertRequestAndResponse(t, status.PingPath, 200, "pong")
 	assertRequestAndResponse(t, status.PingPath, 200, "pong")
 
 	assertRequestAndResponse(t, status.BuildInfoPath, 200, "")
 	assertRequestAndResponse(t, status.BuildInfoPath, 200, "")
+
+	assertRequestAndResponse(t, "/__health", 200, "")
 }
 
 func assertRequestAndResponse(t testing.TB, url string, expectedStatus int, expectedBody string) {

@@ -3,11 +3,9 @@ package main
 import (
 	"github.com/Financial-Times/base-ft-rw-app-go/baseftrwapp"
 	"github.com/Financial-Times/generic-rw-s3/rws3"
-	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
-	"github.com/rcrowley/go-metrics"
 	"net/http"
 	"os"
 )
@@ -55,11 +53,7 @@ func main() {
 func runServer(port string) {
 
 	servicesRouter := mux.NewRouter()
-	var monitoringRouter http.Handler = servicesRouter
-	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
-	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
-
-	rws3.AddAdminHandlers(&monitoringRouter)
+	rws3.AddAdminHandlers(servicesRouter)
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Unable to start server: %v", err)
