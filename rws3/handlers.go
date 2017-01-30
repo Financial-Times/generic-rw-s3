@@ -1,4 +1,5 @@
-package main
+package rws3
+
 import (
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
@@ -18,7 +19,7 @@ func AddAdminHandlers(servicesRouter *mux.Router) {
 	http.HandleFunc(status.PingPathDW, status.PingHandler)
 	http.HandleFunc(status.BuildInfoPath, status.BuildInfoHandler)
 	http.HandleFunc(status.BuildInfoPathDW, status.BuildInfoHandler)
-	http.HandleFunc("/__health", v1a.Handler("Organisations RW Gazetteer Healthchecks",
+	http.HandleFunc("/__health", v1a.Handler("AnnotationsReadWriteNeo4j Healthchecks",
 		"NOOP healthcheck", v1a.Check{
 			BusinessImpact:   "Unable to respond to requests",
 			Name:             "NOOP health check",

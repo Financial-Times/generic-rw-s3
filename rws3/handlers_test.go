@@ -1,12 +1,12 @@
-package main
+package rws3
 
 import (
-	"testing"
-	"github.com/gorilla/mux"
-	"net/http/httptest"
-	"github.com/stretchr/testify/assert"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
+	"github.com/gorilla/mux"
+	"github.com/stretchr/testify/assert"
 	"net/http"
+	"net/http/httptest"
+	"testing"
 )
 
 func TestAddAdminHandlers(t *testing.T) {

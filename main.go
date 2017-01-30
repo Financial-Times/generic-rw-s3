@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	app := cli.App("ces-gazetteer-rw", "A RESTful API for writing organisations to the CES gazetteer api")
+	app := cli.App("people-rw-neo4j", "A RESTful API for managing People in neo4j")
 
 	port := app.String(cli.StringOpt{
 		Name:   "port",
