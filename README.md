@@ -1,17 +1,17 @@
-# Generic Reader/Writer for S3 (generic-rw-s3)
-[![Circle CI](https://circleci.com/gh/Financial-Times/generic-rw-s3.svg?style=shield)](https://circleci.com/gh/Financial-Times/generic-rw-s3)[![Go Report Card](https://goreportcard.com/badge/github.com/Financial-Times/generic-rw-s3)](https://goreportcard.com/report/github.com/Financial-Times/generic-rw-s3) [![Coverage Status](https://coveralls.io/repos/github/Financial-Times/generic-rw-s3/badge.svg)](https://coveralls.io/github/Financial-Times/generic-rw-s3)
+# Gazetteer Reader/Writer 
+[![Circle CI](https://circleci.com/gh/Financial-Times/organisations-rw-gazetteer.svg?style=shield)](https://circleci.com/gh/Financial-Times/organisations-rw-gazetteer)[![Go Report Card](https://goreportcard.com/badge/github.com/Financial-Times/organisations-rw-gazetteer)](https://goreportcard.com/report/github.com/Financial-Times/organisations-rw-gazetteer) [![Coverage Status](https://coveralls.io/repos/github/Financial-Times/organisations-rw-gazetteer/badge.svg)](https://coveralls.io/github/Financial-Times/organisations-rw-gazetteer)
  
-__An API for reading/writing generic payloads up to S3. It can be setup to read those payloads off Kafka
+__An API for reading/writing concepts to the gazeteer api
 
 ## Installation
 
 For the first time:
 
-`go get github.com/Financial-Times/generic-rw-s3`
+`go get github.com/Financial-Times/organisations-rw-gazetteer`
 
 or update:
 
-`go get -u github.com/Financial-Times/generic-rw-s3`
+`go get -u github.com/Financial-Times/organisations-rw-gazetteer`
 
 
 ## Running
@@ -23,19 +23,10 @@ TODO
 TODO: Add examples
 
 ### PUT /UUID
-
-Any payload can be written via the PUT using a unique UUID to identify this payload within the S3 bucket
-
+TODO
 ### GET /UUID
-This internal read should return what got written to S3
-
+Gets a given representation of a concept from the CES gazetteet given a UUID
 If not found, you'll get a 404 response.
-
-### GET /
-Streams all payloads in a given bucket
-
-### GET /__ids
-Streams all ids in a given bucket
 
 ### DELETE /UUID
 Will return 204 if successful, 404 if not found
