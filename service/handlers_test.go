@@ -8,8 +8,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -20,8 +22,9 @@ const (
 func TestAddAdminHandlers(t *testing.T) {
 	s := &mockS3Client{}
 	mw := &mockWriter{}
+	mr := &mockReader{payload: "Soemthing found"}
 	r := mux.NewRouter()
-	AddAdminHandlers(r, s, "bucketName", mw)
+	AddAdminHandlers(r, s, "bucketName", mw, mr)
 
 	t.Run(status.PingPath, func(t *testing.T) {
 		assertRequestAndResponse(t, status.PingPath, 200, "pong")
@@ -60,8 +63,15 @@ func TestAddAdminHandlers(t *testing.T) {
 		assert.Contains(t, body, "\"S3 Bucket check\",\"ok\":false")
 	})
 
-	t.Run("/_gtg bad", func(t *testing.T) {
+	t.Run("/_gtg bad can't write", func(t *testing.T) {
 		mw.returnError = errors.New("S3 write error")
+		mr.returnError = nil
+		assertRequestAndResponse(t, "/__gtg", 503, "")
+	})
+
+	t.Run("/_gtg bad can't read", func(t *testing.T) {
+		mw.returnError = nil
+		mr.returnError = errors.New("S3 read error")
 		assertRequestAndResponse(t, "/__gtg", 503, "")
 	})
 }
@@ -69,7 +79,7 @@ func TestAddAdminHandlers(t *testing.T) {
 func TestWriteHandler(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
-	Handlers(r, NewWriterHandler(mw))
+	Handlers(r, NewWriterHandler(mw), ReaderHandler{})
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
@@ -83,7 +93,7 @@ func TestWriteHandler(t *testing.T) {
 func TestWriterHandlerFailReadingBody(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
-	Handlers(r, NewWriterHandler(mw))
+	Handlers(r, NewWriterHandler(mw), ReaderHandler{})
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequestBodyFail("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c"))
@@ -93,11 +103,52 @@ func TestWriterHandlerFailReadingBody(t *testing.T) {
 func TestWriterHandlerFailWrite(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{returnError: errors.New("error writing")}
-	Handlers(r, WriterHandler{writer: mw})
+	Handlers(r, WriterHandler{writer: mw}, ReaderHandler{})
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
 	assert.Equal(t, 500, rec.Code)
+}
+
+func TestReadHandlerForUUID(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{payload: "Some content"}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content")
+}
+
+func TestReadHandlerForUUIDNotFound(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 404, "{\"msg\":\"item not found\"}")
+}
+
+func TestReadHandlerForErrorFromReader(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{payload: "something came back but", returnError: errors.New("Some error from reader though")}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 500, "{\"msg\":\"Internal Server Error\"}")
+}
+
+func TestReadHandlerForErrorReadingBody(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{rc: &mockReaderCloser{err: errors.New("Some error")}}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 502, "{\"msg\":\"Status Bad Gateway\"}")
+}
+
+func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string) *httptest.ResponseRecorder {
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequest("GET", url, ""))
+	assert.Equal(t, expectedStatus, rec.Code)
+	if expectedBody != "" {
+		assert.Equal(t, expectedBody, rec.Body.String())
+	}
+
+	return rec
 }
 
 func assertRequestAndResponse(t testing.TB, url string, expectedStatus int, expectedBody string) *httptest.ResponseRecorder {
@@ -112,17 +163,21 @@ func assertRequestAndResponse(t testing.TB, url string, expectedStatus int, expe
 	return rec
 }
 
-type mockReader struct {
+type mockReaderCloser struct {
 	err error
 	n   int
 }
 
-func (mr *mockReader) Read(p []byte) (int, error) {
+func (mr *mockReaderCloser) Read(p []byte) (int, error) {
 	return mr.n, mr.err
 }
 
+func (mr *mockReaderCloser) Close() error {
+	return mr.err
+}
+
 func newRequestBodyFail(method, url string) *http.Request {
-	mr := &mockReader{err: errors.New("Badbody")}
+	mr := &mockReaderCloser{err: errors.New("Badbody")}
 	r := io.Reader(mr)
 	req, err := http.NewRequest(method, url, r)
 	if err != nil {
@@ -144,6 +199,29 @@ func newRequest(method, url string, body string) *http.Request {
 		panic(err)
 	}
 	return req
+}
+
+type mockReader struct {
+	uuid        string
+	payload     string
+	rc          io.ReadCloser
+	returnError error
+}
+
+func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, error) {
+	log.Infof("Got request for uuid: %v", uuid)
+	r.uuid = uuid
+	var body io.ReadCloser
+
+	if r.payload != "" {
+		body = ioutil.NopCloser(strings.NewReader(r.payload))
+	}
+
+	if r.rc != nil {
+		body = r.rc
+	}
+
+	return r.payload != "" || r.rc != nil, body, r.returnError
 }
 
 type mockWriter struct {
