@@ -110,6 +110,29 @@ func TestWriterHandlerFailWrite(t *testing.T) {
 	assert.Equal(t, 500, rec.Code)
 }
 
+func TestWriterHandlerDeleteReturnsOK(t *testing.T) {
+	r := mux.NewRouter()
+	mw := &mockWriter{}
+	Handlers(r, NewWriterHandler(mw), ReaderHandler{})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequest("DELETE", "/22f53313-85c6-46b2-94e7-cfde9322f26c", ""))
+	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
+	assert.Equal(t, 204, rec.Code)
+	assert.Empty(t, rec.Body.String())
+}
+
+func TestWriterHandlerDeleteFailsReturns500(t *testing.T) {
+	r := mux.NewRouter()
+	mw := &mockWriter{returnError: errors.New("Some error from writer")}
+	Handlers(r, NewWriterHandler(mw), ReaderHandler{})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequest("DELETE", "/22f53313-85c6-46b2-94e7-cfde9322f26c", ""))
+	assert.Equal(t, 500, rec.Code)
+	assert.Equal(t, "{\"msg\":\"Internal Server Error\"}", rec.Body.String())
+}
+
 func TestReadHandlerForUUID(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "Some content"}
@@ -137,6 +160,34 @@ func TestReadHandlerForErrorReadingBody(t *testing.T) {
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
 
 	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 502, "{\"msg\":\"Status Bad Gateway\"}")
+}
+
+func TestReadHandlerCountOK(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{count: 1337}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/__count", 200, "1337")
+}
+
+func TestReadHandlerCountFailsReturnsInternalServerError(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{returnError: errors.New("Some error from reader though")}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/__count", 500, "{\"msg\":\"Internal Server Error\"}")
+}
+
+func TestReaderHandlerIdsOK(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{payload: "PAYLOAD"}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/__ids", 200, "PAYLOAD")
+}
+
+func TestReaderHandlerIdsFailsReturnsInternalServerError(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{returnError: errors.New("Some error from reader though")}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/__ids", 500, "{\"msg\":\"Internal Server Error\"}")
 }
 
 func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string) *httptest.ResponseRecorder {
@@ -206,6 +257,7 @@ type mockReader struct {
 	payload     string
 	rc          io.ReadCloser
 	returnError error
+	count       int64
 }
 
 func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, error) {
@@ -224,11 +276,31 @@ func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, error) {
 	return r.payload != "" || r.rc != nil, body, r.returnError
 }
 
+func (r *mockReader) Count() (int64, error) {
+	return r.count, r.returnError
+}
+
+func (r *mockReader) Ids() (io.PipeReader, error) {
+	pv, pw := io.Pipe()
+	go func(p *io.PipeWriter) {
+		if r.payload != "" {
+			p.Write([]byte(r.payload))
+		}
+		p.Close()
+	}(pw)
+	return *pv, r.returnError
+}
+
 type mockWriter struct {
 	uuid        string
 	payload     string
 	returnError error
 	ct          string
+}
+
+func (mw *mockWriter) Delete(uuid string) error {
+	mw.uuid = uuid
+	return mw.returnError
 }
 
 func (mw *mockWriter) Write(uuid string, b *[]byte, ct string) error {
