@@ -88,9 +88,12 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 	w := service.NewS3Writer(svc, bucketName, bucketPrefix)
 	wh := service.NewWriterHandler(w)
 
+	r := service.NewS3Reader(svc, bucketName, bucketPrefix)
+	rh := service.NewReaderHandler(r)
+
 	servicesRouter := mux.NewRouter()
-	service.Handlers(servicesRouter, wh)
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, w)
+	service.Handlers(servicesRouter, wh, rh)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, w, r)
 
 	log.Infof("listening on %v", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {

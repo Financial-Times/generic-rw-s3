@@ -12,10 +12,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rcrowley/go-metrics"
 	"net/http"
+	"time"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer) {
-	c := checker{svc, bucketName, writer}
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer, reader Reader) {
+	c := checker{svc, bucketName, writer, reader}
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
 	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
@@ -41,6 +42,7 @@ type checker struct {
 	s3iface.S3API
 	bucketName string
 	w          Writer
+	r          Reader
 }
 
 func (c *checker) healthCheck() (string, error) {
@@ -57,18 +59,28 @@ func (c *checker) healthCheck() (string, error) {
 
 func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	pl := []byte("{}")
+	gtg := "__gtg_" + time.Now().String()
 	var err error
-	err = c.w.Write("__gtg", &pl, "application/json")
+	err = c.w.Write(gtg, &pl, "application/json")
 	if err != nil {
+		log.Errorf("Could not write %v", err.Error())
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+	_, _, err = c.r.Get(gtg)
+	if err != nil {
+		log.Errorf("Could not read %v", err.Error())
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	rw.WriteHeader(http.StatusOK)
 }
 
-func Handlers(servicesRouter *mux.Router, wh WriterHandler) {
+func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
 	mh := handlers.MethodHandler{
 		"PUT": http.HandlerFunc(wh.HandleWrite),
+		"GET": http.HandlerFunc(rh.HandleGet),
 	}
 
 	servicesRouter.Handle("/{uuid:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[34][0-9a-fA-F]{3}-[89ab][0-9a-fA-F]{3}-[0-9a-fA-F]{12}}", mh)
