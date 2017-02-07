@@ -79,9 +79,20 @@ func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 
 func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
 	mh := handlers.MethodHandler{
-		"PUT": http.HandlerFunc(wh.HandleWrite),
-		"GET": http.HandlerFunc(rh.HandleGet),
+		"PUT":    http.HandlerFunc(wh.HandleWrite),
+		"GET":    http.HandlerFunc(rh.HandleGet),
+		"DELETE": http.HandlerFunc(wh.HandleDelete),
+	}
+
+	ch := handlers.MethodHandler{
+		"GET": http.HandlerFunc(rh.HandleCount),
+	}
+
+	ih := handlers.MethodHandler{
+		"GET": http.HandlerFunc(rh.HandleIds),
 	}
 
 	servicesRouter.Handle("/{uuid:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[34][0-9a-fA-F]{3}-[89ab][0-9a-fA-F]{3}-[0-9a-fA-F]{12}}", mh)
+	servicesRouter.Handle("/__count", ch)
+	servicesRouter.Handle("/__ids", ih)
 }

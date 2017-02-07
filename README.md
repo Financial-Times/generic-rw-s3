@@ -16,26 +16,73 @@ or update:
 
 ## Running
 
-TODO
+
+`$GOPATH/bin/generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1"`
+
+```
+export|set PORT=8080
+export|set BUCKET_NAME='bucketName"
+export|set BUCKET_PREFIX="bucketPrefix"
+export|set AWS_REGION="eu-west-1"
+$GOPATH/bin/generic-rw-s3
+```
+
+The app assumes that you have correctly set up your AWS credentials by either using the `~/.aws/credentials` file:
+
+```
+[default]
+aws_access_key_id = AKID1234567890
+aws_secret_access_key = MY-SECRET-KEY
+```
+
+or the default AWS environment variables:
+
+```
+AWS_ACCESS_KEY_ID=AKID1234567890
+AWS_SECRET_ACCESS_KEY=MY-SECRET-KEY
+```
 
 ## Endpoints
-
-TODO: Add examples
 
 ### PUT /UUID
 
 Any payload can be written via the PUT using a unique UUID to identify this payload within the S3 bucket
 
+```
+curl -H 'Content-Type: application/json' -X PUT -d '{"tags":["tag1","tag2"],"question":"Which band?","answers":[{"id":"a0","answer":"Answer1"},{"id":"a1","answer":"answer2"}]}' http://localhost:8080/bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9
+```
+
+The `Content-Type` is important as that will be what the file will be stored as.
+
 ### GET /UUID
-This internal read should return what got written to S3
+This internal read should return what was written to S3
 
 If not found, you'll get a 404 response.
+
+```
+curl http://localhost:8080/bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9
+```
 
 ### GET /
 Streams all payloads in a given bucket
 
 ### GET /__ids
 Streams all ids in a given bucket
+
+```
+curl http://localhost:8080/__ids
+```
+
+The return payload will look like:
+
+```
+{"ID":"dcfa65d6-3849-445e-ac6a-15bc5a17e954"}
+{"ID":"2136f8ad-e94e-45cb-b616-336f38533214"}
+{"ID":"c9f5337d-0435-477e-b0f5-bd35ff3a4b48"}
+{"ID":"7f84a70b-7085-4309-aa8e-304b3759f49f"}
+{"ID":"99a0537a-3635-479b-92f7-ba10b63e2f87"}
+...
+```
 
 ### DELETE /UUID
 Will return 204 if successful, 404 if not found
