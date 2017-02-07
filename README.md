@@ -22,7 +22,6 @@ or update:
 ```
 export|set PORT=8080
 export|set BUCKET_NAME='bucketName"
-export|set BUCKET_PREFIX="bucketPrefix"
 export|set AWS_REGION="eu-west-1"
 $GOPATH/bin/generic-rw-s3
 ```
@@ -42,6 +41,12 @@ AWS_ACCESS_KEY_ID=AKID1234567890
 AWS_SECRET_ACCESS_KEY=MY-SECRET-KEY
 ```
 
+There are optional arguments as well:
+```
+export|set BUCKET_PREFIX="bucketPrefix" # adds a prefix folder to all items uploaded
+export|set Workers=10 # Number of concurrent downloads when downloading all items. Default is 10
+```
+
 ## Endpoints
 
 ### PUT /UUID
@@ -53,6 +58,8 @@ curl -H 'Content-Type: application/json' -X PUT -d '{"tags":["tag1","tag2"],"que
 ```
 
 The `Content-Type` is important as that will be what the file will be stored as.
+
+When the content is uploaded, the key generated for the item is converted from `123e4567-e89b-12d3-a456-426655440000` to `<bucket_prefix>/123e4567/e89b/12d3/a456/426655440000`. The reason we do this is so that it becomes easier to manage/browser for content in the AWS console. It is also good practice to do this as it means that files get put into different partitions. This is important if you're writing and pulling content from S3 as it means that content will get written/read from different partitions on S3.
 
 ### GET /UUID
 This internal read should return what was written to S3

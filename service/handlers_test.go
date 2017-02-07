@@ -190,6 +190,20 @@ func TestReaderHandlerIdsFailsReturnsInternalServerError(t *testing.T) {
 	assertRequestAndResponseFromRouter(t, r, "/__ids", 500, "{\"msg\":\"Internal Server Error\"}")
 }
 
+func TestHandleGetAllOK(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{payload: "PAYLOAD"}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/", 200, "PAYLOAD")
+}
+
+func TestHandleGetAllFailsReturnsInternalServerError(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{returnError: errors.New("Some error from reader though")}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/", 500, "{\"msg\":\"Internal Server Error\"}")
+}
+
 func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string) *httptest.ResponseRecorder {
 
 	rec := httptest.NewRecorder()
@@ -280,7 +294,7 @@ func (r *mockReader) Count() (int64, error) {
 	return r.count, r.returnError
 }
 
-func (r *mockReader) Ids() (io.PipeReader, error) {
+func (r *mockReader) processPipe() (io.PipeReader, error) {
 	pv, pw := io.Pipe()
 	go func(p *io.PipeWriter) {
 		if r.payload != "" {
@@ -289,6 +303,14 @@ func (r *mockReader) Ids() (io.PipeReader, error) {
 		p.Close()
 	}(pw)
 	return *pv, r.returnError
+}
+
+func (r *mockReader) GetAll() (io.PipeReader, error) {
+	return r.processPipe()
+}
+
+func (r *mockReader) Ids() (io.PipeReader, error) {
+	return r.processPipe()
 }
 
 type mockWriter struct {

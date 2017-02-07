@@ -13,19 +13,22 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Reader interface {
 	Get(uuid string) (bool, io.ReadCloser, error)
 	Count() (int64, error)
 	Ids() (io.PipeReader, error)
+	GetAll() (io.PipeReader, error)
 }
 
-func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string) Reader {
+func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string, workers int16) Reader {
 	return &S3Reader{
 		svc:          svc,
 		bucketName:   bucketName,
 		bucketPrefix: bucketPrefix,
+		workers:      workers,
 	}
 }
 
@@ -33,12 +36,13 @@ type S3Reader struct {
 	svc          s3iface.S3API
 	bucketName   string
 	bucketPrefix string
+	workers      int16
 }
 
 func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, error) {
 	params := &s3.GetObjectInput{
 		Bucket: aws.String(r.bucketName),
-		Key:    aws.String(r.bucketPrefix + "/" + uuid),
+		Key:    aws.String(getKey(r.bucketPrefix, uuid)),
 	}
 	resp, err := r.svc.GetObject(params)
 
@@ -74,6 +78,56 @@ func (r *S3Reader) getListObjectsV2Input() *s3.ListObjectsV2Input {
 	}
 }
 
+func (r *S3Reader) GetAll() (io.PipeReader, error) {
+	err := r.checkListOk()
+	pv, pw := io.Pipe()
+	if err != nil {
+		pv.Close()
+		return *pv, err
+	}
+
+	itemSize := float32(r.workers) * 1.5
+	items := make(chan *io.ReadCloser, int(itemSize))
+	keys := make(chan *string, 3000) //  Three times the default Page size
+	go r.processItems(items, pw)
+	var wg sync.WaitGroup
+	tw := int(r.workers)
+	for w := 0; w < tw; w++ {
+		wg.Add(1)
+		go r.getItemWorker(w, &wg, keys, items)
+	}
+
+	go r.listObjects(keys)
+
+	go func(w *sync.WaitGroup, i chan *io.ReadCloser) {
+		w.Wait()
+		close(i)
+	}(&wg, items)
+
+	return *pv, err
+}
+
+func (r *S3Reader) getItemWorker(w int, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
+	defer wg.Done()
+	for uuid := range keys {
+		log.Infof("worker %v, getting uuid : %v", w, *uuid)
+		if found, i, _ := r.Get(*uuid); found {
+			items <- &i
+		}
+	}
+}
+
+func (r *S3Reader) processItems(items <-chan *io.ReadCloser, pw *io.PipeWriter) {
+	for item := range items {
+		if _, err := io.Copy(pw, *item); err != nil {
+			log.Errorf("Error reading from S3: %v", err.Error())
+		} else {
+			io.WriteString(pw, "\n")
+		}
+	}
+	pw.Close()
+}
+
 func (r *S3Reader) Ids() (io.PipeReader, error) {
 
 	err := r.checkListOk()
@@ -99,7 +153,6 @@ func (r *S3Reader) Ids() (io.PipeReader, error) {
 		}(keys, p)
 
 		err := r.listObjects(keys)
-		close(keys)
 		if err != nil {
 			log.Errorf("Got an error reading content of bucket : %v", err.Error())
 		}
@@ -118,8 +171,25 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 	return r.svc.ListObjectsV2Pages(r.getListObjectsV2Input(),
 		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 			for _, o := range page.Contents {
-				keys <- o.Key
+
+				if !strings.HasSuffix(*o.Key, "/") && (*o.Key != ".") {
+					var key string
+					if r.bucketPrefix == "" {
+						key = *o.Key
+					} else {
+						k := strings.SplitAfter(*o.Key, r.bucketPrefix+"/")
+						log.Infof("k: %v", k)
+						key = k[1]
+					}
+					uuid := strings.Replace(key, "/", "-", -1)
+					keys <- &uuid
+				}
 			}
+
+			if lastPage {
+				close(keys)
+			}
+
 			return !lastPage
 		})
 }
@@ -143,10 +213,14 @@ func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string) Writ
 	}
 }
 
+func getKey(bucketPrefix string, uuid string) string {
+	return bucketPrefix + "/" + strings.Replace(uuid, "-", "/", -1)
+}
+
 func (w *S3Writer) Delete(uuid string) error {
 	params := &s3.DeleteObjectInput{
-		Bucket: aws.String(w.bucketName),                // Required
-		Key:    aws.String(w.bucketPrefix + "/" + uuid), // Required
+		Bucket: aws.String(w.bucketName),                 // Required
+		Key:    aws.String(getKey(w.bucketPrefix, uuid)), // Required
 	}
 
 	if resp, err := w.svc.DeleteObject(params); err != nil {
@@ -161,7 +235,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 
 	params := &s3.PutObjectInput{
 		Bucket:      aws.String(w.bucketName),
-		Key:         aws.String(w.bucketPrefix + "/" + uuid),
+		Key:         aws.String(getKey(w.bucketPrefix, uuid)),
 		Body:        bytes.NewReader(*b),
 		ContentType: aws.String(ct),
 	}
@@ -256,6 +330,21 @@ func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 	b := []byte{}
 	b = strconv.AppendInt(b, i, 10)
 	rw.Write(b)
+}
+
+func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
+	pv, err := rh.reader.GetAll()
+
+	if err != nil {
+		log.Errorf("Error from reader: %v", err.Error())
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusInternalServerError)
+		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		return
+	}
+
+	rw.WriteHeader(http.StatusOK)
+	io.Copy(rw, &pv)
 }
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
