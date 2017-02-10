@@ -9,6 +9,7 @@ WORKDIR "$GOPATH/src/generic-rw-s3"
 RUN apk --no-cache --virtual .build-dependencies add git \
     && apk --no-cache --upgrade add ca-certificates \
     && update-ca-certificates --fresh \
+    && git config --global http.https://gopkg.in.followRedirects true \
     && cd $GOPATH/src/generic-rw-s3 \
     && BUILDINFO_PACKAGE="github.com/Financial-Times/service-status-go/buildinfo." \
     && VERSION="version=$(git describe --tag --always 2> /dev/null)" \
