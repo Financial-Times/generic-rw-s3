@@ -44,6 +44,13 @@ func main() {
 		EnvVar: "BUCKET_PREFIX",
 	})
 
+	wrkSize := app.Int(cli.IntOpt{
+		Name:   "workers",
+		Value:  10,
+		Desc:   "Number of workers to use when batch downloading",
+		EnvVar: "WORKERS",
+	})
+
 	graphiteTCPAddress := app.String(cli.StringOpt{
 		Name:   "graphiteTCPAddress",
 		Value:  "",
@@ -67,14 +74,14 @@ func main() {
 
 	app.Action = func() {
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
-		runServer(*port, *awsRegion, *bucketName, *bucketPrefix)
+		runServer(*port, *awsRegion, *bucketName, *bucketPrefix, *wrkSize)
 	}
 	log.SetLevel(log.InfoLevel)
 	log.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(port string, awsRegion string, bucketName string, bucketPrefix string) {
+func runServer(port string, awsRegion string, bucketName string, bucketPrefix string, wrks int) {
 	sess, err := session.NewSession(
 		&aws.Config{
 			Region:     aws.String(awsRegion),
@@ -88,7 +95,7 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 	w := service.NewS3Writer(svc, bucketName, bucketPrefix)
 	wh := service.NewWriterHandler(w)
 
-	r := service.NewS3Reader(svc, bucketName, bucketPrefix)
+	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks))
 	rh := service.NewReaderHandler(r)
 
 	servicesRouter := mux.NewRouter()
