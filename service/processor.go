@@ -21,6 +21,7 @@ type Reader interface {
 	Count() (int64, error)
 	Ids() (io.PipeReader, error)
 	GetAll() (io.PipeReader, error)
+	Head(uuid string) (bool, error)
 }
 
 func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string, workers int16) Reader {
@@ -41,8 +42,8 @@ type S3Reader struct {
 
 func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, error) {
 	params := &s3.GetObjectInput{
-		Bucket: aws.String(r.bucketName),
-		Key:    aws.String(getKey(r.bucketPrefix, uuid)),
+		Bucket: aws.String(r.bucketName),                 // Required
+		Key:    aws.String(getKey(r.bucketPrefix, uuid)), // Required
 	}
 	resp, err := r.svc.GetObject(params)
 
@@ -54,6 +55,24 @@ func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, error) {
 	}
 
 	return true, resp.Body, err
+}
+
+func (r *S3Reader) Head(uuid string) (bool, error) {
+	params := &s3.HeadObjectInput{
+		Bucket: aws.String(r.bucketName),                 // Required
+		Key:    aws.String(getKey(r.bucketPrefix, uuid)), // Required
+	}
+
+	_, err := r.svc.HeadObject(params)
+	if err != nil {
+		e, ok := err.(awserr.Error)
+		if ok && e.Code() == "NotFound" {
+			return false, nil
+		}
+		log.Errorf("Error found : %v", err.Error())
+		return false, err
+	}
+	return true, nil
 }
 
 func (r *S3Reader) Count() (int64, error) {
@@ -242,6 +261,8 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 
 	resp, err := w.svc.PutObject(params)
 
+	log.Infof("Resp: %v", resp)
+
 	if err != nil {
 		log.Infof("Error found, Resp was : %v", resp)
 		return err
@@ -252,40 +273,63 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 
 type WriterHandler struct {
 	writer Writer
+	reader Reader
 }
 
-func NewWriterHandler(writer Writer) WriterHandler {
-	return WriterHandler{writer: writer}
+func NewWriterHandler(writer Writer, reader Reader) WriterHandler {
+	return WriterHandler{
+		writer: writer,
+		reader: reader,
+	}
 }
 
 func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+	uuid := strings.Split(r.URL.Path, "/")[1]
 	var err error
+	var exist bool
 	bs, err := ioutil.ReadAll(r.Body)
+
 	if err != nil {
-		log.Errorf("Error reading request body: %v", err.Error())
-		rw.WriteHeader(http.StatusInternalServerError)
+		writerStatusInternalServerError(uuid, err, rw)
 		return
 	}
+
 	ct := r.Header.Get("Content-Type")
-	uuid := strings.Split(r.URL.Path, "/")[1]
+	exist, err = w.reader.Head(uuid)
+	if err != nil {
+		writerStatusInternalServerError(uuid, err, rw)
+		return
+	}
+
 	err = w.writer.Write(uuid, &bs, ct)
 	if err != nil {
-		log.Errorf("Error writing '%v': %v", uuid, err.Error())
-		rw.Header().Set("Content-Type", "application/json")
-		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		writerStatusInternalServerError(uuid, err, rw)
 		return
 	}
-	log.Infof("Wrote '%v' succesfully", uuid)
-	rw.WriteHeader(http.StatusCreated)
+
+	if exist {
+		log.Infof("Wrote '%v' succesfully", uuid)
+		rw.WriteHeader(http.StatusOK)
+		rw.Write([]byte("{\"message\":\"UPDATED\"}"))
+
+	} else {
+		log.Infof("Wrote '%v' succesfully", uuid)
+		rw.WriteHeader(http.StatusCreated)
+		rw.Write([]byte("{\"message\":\"CREATED\"}"))
+	}
+}
+func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWriter) {
+	log.Errorf("Error writing '%v': %v", uuid, err.Error())
+	rw.WriteHeader(http.StatusInternalServerError)
+	rw.Write([]byte("{\"message\":\"Unknown internal error\"}"))
 }
 
 func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
 	uuid := strings.Split(r.URL.Path, "/")[1]
 	if err := w.writer.Delete(uuid); err != nil {
-		log.Errorf("Error reading request body: %v", err.Error())
-		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		rw.Header().Set("Content-Type", "application/json")
+		writerStatusInternalServerError(uuid, err, rw)
 		return
 	}
 
@@ -305,10 +349,7 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.Ids()
 	defer pv.Close()
 	if err != nil {
-		log.Errorf("Error from reader: %v", err.Error())
-		rw.Header().Set("Content-Type", "application/json")
-		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		writeInternalServerError(err, rw)
 		return
 	}
 
@@ -318,28 +359,30 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 
 func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 	i, err := rh.reader.Count()
-	rw.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		log.Errorf("Error from reader: %v", err.Error())
-		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		writeInternalServerError(err, rw)
 		return
 	}
 	log.Infof("Got a count back of '%v'", i)
+	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
 	b := []byte{}
 	b = strconv.AppendInt(b, i, 10)
 	rw.Write(b)
 }
 
+func writeInternalServerError(err error, rw http.ResponseWriter) {
+	log.Errorf("Error from reader: %v", err.Error())
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusInternalServerError)
+	rw.Write([]byte("{\"message\":\"Unknown internal error\"}"))
+}
+
 func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.GetAll()
 
 	if err != nil {
-		log.Errorf("Error from reader: %v", err.Error())
-		rw.Header().Set("Content-Type", "application/json")
-		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		writeInternalServerError(err, rw)
 		return
 	}
 
@@ -354,15 +397,12 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 	if !f {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusNotFound)
-		rw.Write([]byte("{\"msg\":\"item not found\"}"))
+		rw.Write([]byte("{\"message\":\"Item not found\"}"))
 		return
 	}
 
 	if err != nil {
-		log.Errorf("Error from reader: %v", err.Error())
-		rw.Header().Set("Content-Type", "application/json")
-		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"msg\":\"Internal Server Error\"}"))
+		writeInternalServerError(err, rw)
 		return
 	}
 
@@ -372,7 +412,7 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 		log.Errorf("Error reading body: %v", err.Error())
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusBadGateway)
-		rw.Write([]byte("{\"msg\":\"Status Bad Gateway\"}"))
+		rw.Write([]byte("{\"message\":\"Error while communicating to other service\"}"))
 		return
 	}
 	rw.WriteHeader(http.StatusOK)

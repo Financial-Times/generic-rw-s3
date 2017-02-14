@@ -25,6 +25,7 @@ type mockS3Client struct {
 	s3error              error
 	putObjectInput       *s3.PutObjectInput
 	headBucketInput      *s3.HeadBucketInput
+	headObjectInput      *s3.HeadObjectInput
 	getObjectInput       *s3.GetObjectInput
 	deleteObjectInput    *s3.DeleteObjectInput
 	deleteObjectOutput   *s3.DeleteObjectOutput
@@ -50,7 +51,14 @@ func (m *mockS3Client) HeadBucket(hbi *s3.HeadBucketInput) (*s3.HeadBucketOutput
 	m.headBucketInput = hbi
 	return nil, m.s3error
 }
+func (m *mockS3Client) HeadObject(hoi *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+	m.Lock()
+	defer m.Unlock()
+	log.Infof("Head params: %v", hoi)
+	m.headObjectInput = hoi
+	return nil, m.s3error
 
+}
 func (m *mockS3Client) DeleteObject(doi *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
@@ -371,6 +379,33 @@ func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
 	payload, err := ioutil.ReadAll(&p)
 	assert.NoError(t, err)
 	assert.Equal(t, 25, strings.Count(string(payload[:]), "PAYLOAD"))
+}
+
+func TestS3Reader_Head(t *testing.T) {
+	r, s := getReader()
+	t.Run("Found", func(t *testing.T) {
+		found, err := r.Head(expectedUUID)
+		assert.NoError(t, err)
+		assert.True(t, found)
+		assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.headObjectInput.Key)
+		assert.Equal(t, "testBucket", *s.headObjectInput.Bucket)
+
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		s.s3error = awserr.New("NotFound", "message", errors.New("Some error"))
+		found, err := r.Head(expectedUUID)
+		assert.NoError(t, err)
+		assert.False(t, found)
+	})
+
+	t.Run("Random Error", func(t *testing.T) {
+		s.s3error = errors.New("Random error")
+		found, err := r.Head(expectedUUID)
+		assert.Error(t, err)
+		assert.False(t, found)
+		assert.Equal(t, s.s3error, err)
+	})
 }
 
 func getListObjectsV2Output(keyCount int64, start int) *s3.ListObjectsV2Output {
