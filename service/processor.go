@@ -17,7 +17,7 @@ import (
 )
 
 type Reader interface {
-	Get(uuid string) (bool, io.ReadCloser, error)
+	Get(uuid string) (bool, io.ReadCloser, *string, error)
 	Count() (int64, error)
 	Ids() (io.PipeReader, error)
 	GetAll() (io.PipeReader, error)
@@ -40,7 +40,7 @@ type S3Reader struct {
 	workers      int16
 }
 
-func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, error) {
+func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	params := &s3.GetObjectInput{
 		Bucket: aws.String(r.bucketName),                 // Required
 		Key:    aws.String(getKey(r.bucketPrefix, uuid)), // Required
@@ -50,11 +50,12 @@ func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, error) {
 	if err != nil {
 		e, ok := err.(awserr.Error)
 		if ok && e.Code() == "NoSuchKey" {
-			return false, nil, nil
+			return false, nil, nil, nil
 		}
+		return false, nil, nil, err
 	}
 
-	return true, resp.Body, err
+	return true, resp.Body, resp.ContentType, err
 }
 
 func (r *S3Reader) Head(uuid string) (bool, error) {
@@ -130,7 +131,7 @@ func (r *S3Reader) getItemWorker(w int, wg *sync.WaitGroup, keys <-chan *string,
 	defer wg.Done()
 	for uuid := range keys {
 		log.Infof("worker %v, getting uuid : %v", w, *uuid)
-		if found, i, _ := r.Get(*uuid); found {
+		if found, i, _, _ := r.Get(*uuid); found {
 			items <- &i
 		}
 	}
@@ -353,6 +354,7 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rw.Header().Set("Content-Type", "application/octet-stream")
 	rw.WriteHeader(http.StatusOK)
 	io.Copy(rw, &pv)
 }
@@ -386,13 +388,14 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rw.Header().Set("Content-Type", "application/octet-stream")
 	rw.WriteHeader(http.StatusOK)
 	io.Copy(rw, &pv)
 }
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 
-	f, i, err := rh.reader.Get(strings.Split(r.URL.Path, "/")[1])
+	f, i, ct, err := rh.reader.Get(strings.Split(r.URL.Path, "/")[1])
 
 	if !f {
 		rw.Header().Set("Content-Type", "application/json")
@@ -415,6 +418,8 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 		rw.Write([]byte("{\"message\":\"Error while communicating to other service\"}"))
 		return
 	}
+
+	rw.Header().Set("Content-Type", *ct)
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(b)
 }
