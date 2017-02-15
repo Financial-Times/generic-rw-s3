@@ -34,6 +34,7 @@ type mockS3Client struct {
 	count                int
 	getObjectCount       int
 	payload              string
+	ct                   string
 }
 
 func (m *mockS3Client) PutObject(poi *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
@@ -75,7 +76,8 @@ func (m *mockS3Client) GetObject(goi *s3.GetObjectInput) (*s3.GetObjectOutput, e
 	payload := m.payload + strconv.Itoa(m.getObjectCount)
 	m.getObjectCount++
 	return &s3.GetObjectOutput{
-		Body: ioutil.NopCloser(strings.NewReader(payload)),
+		Body:        ioutil.NopCloser(strings.NewReader(payload)),
+		ContentType: aws.String(m.ct),
 	}, m.s3error
 }
 
@@ -137,11 +139,13 @@ func TestFailingToWriteToS3(t *testing.T) {
 func TestGetFromS3(t *testing.T) {
 	r, s := getReader()
 	s.payload = "PAYLOAD"
-	b, i, err := r.Get(expectedUUID)
+	s.ct = "content/type"
+	b, i, ct, err := r.Get(expectedUUID)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.getObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.getObjectInput.Key)
 	assert.Equal(t, "testBucket", *s.getObjectInput.Bucket)
+	assert.Equal(t, "content/type", *ct)
 	assert.True(t, b)
 	p, _ := ioutil.ReadAll(i)
 	assert.Equal(t, "PAYLOAD0", string(p[:]))
@@ -149,11 +153,13 @@ func TestGetFromS3(t *testing.T) {
 func TestGetFromS3NoPrefix(t *testing.T) {
 	r, s := getReaderNoPrefix()
 	s.payload = "PAYLOAD"
-	b, i, err := r.Get(expectedUUID)
+	s.ct = "content/type"
+	b, i, ct, err := r.Get(expectedUUID)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.getObjectInput)
 	assert.Equal(t, "/123e4567/e89b/12d3/a456/426655440000", *s.getObjectInput.Key)
 	assert.Equal(t, "testBucket", *s.getObjectInput.Bucket)
+	assert.Equal(t, "content/type", *ct)
 	assert.True(t, b)
 	p, _ := ioutil.ReadAll(i)
 	assert.Equal(t, "PAYLOAD0", string(p[:]))
@@ -163,34 +169,35 @@ func TestGetFromS3WhenNoSuchKey(t *testing.T) {
 	r, s := getReader()
 	s.s3error = awserr.New("NoSuchKey", "message", errors.New("Some error"))
 	s.payload = "PAYLOAD"
-	b, i, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID)
 	assert.NoError(t, err)
 	assert.False(t, b)
 	assert.Nil(t, i)
+	assert.Nil(t, ct)
 }
 
 func TestGetFromS3WithUnknownError(t *testing.T) {
 	r, s := getReader()
 	s.s3error = awserr.New("I don't know", "message", errors.New("Some error"))
 	s.payload = "ERROR PAYLOAD"
-	b, i, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID)
 	assert.Error(t, err)
 	assert.Equal(t, s.s3error, err)
-	assert.True(t, b)
-	p, _ := ioutil.ReadAll(i)
-	assert.Equal(t, "ERROR PAYLOAD0", string(p[:]))
+	assert.False(t, b)
+	assert.Nil(t, i)
+	assert.Nil(t, ct)
 }
 
 func TestGetFromS3WithNoneAWSError(t *testing.T) {
 	r, s := getReader()
 	s.s3error = errors.New("Some error")
 	s.payload = "ERROR PAYLOAD"
-	b, i, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID)
 	assert.Error(t, err)
 	assert.Equal(t, s.s3error, err)
-	assert.True(t, b)
-	p, _ := ioutil.ReadAll(i)
-	assert.Equal(t, "ERROR PAYLOAD0", string(p[:]))
+	assert.False(t, b)
+	assert.Nil(t, i)
+	assert.Nil(t, ct)
 }
 
 func TestGetCountFromS3(t *testing.T) {

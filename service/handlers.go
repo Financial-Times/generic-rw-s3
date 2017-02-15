@@ -67,7 +67,7 @@ func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	_, _, err = c.r.Get(gtg)
+	_, _, _, err = c.r.Get(gtg)
 	if err != nil {
 		log.Errorf("Could not read %v", err.Error())
 		rw.WriteHeader(http.StatusServiceUnavailable)

@@ -161,23 +161,23 @@ func TestWriterHandlerDeleteFailsReturns500(t *testing.T) {
 
 func TestReadHandlerForUUID(t *testing.T) {
 	r := mux.NewRouter()
-	mr := &mockReader{payload: "Some content"}
+	mr := &mockReader{payload: "Some content", returnCT: "return/type"}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content")
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content", "return/type")
 }
 
 func TestReadHandlerForUUIDNotFound(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 404, "{\"message\":\"Item not found\"}")
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 404, "{\"message\":\"Item not found\"}", ExpectedContentType)
 }
 
 func TestReadHandlerForErrorFromReader(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "something came back but", returnError: errors.New("Some error from reader though")}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 500, "{\"message\":\"Unknown internal error\"}")
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 500, "{\"message\":\"Unknown internal error\"}", ExpectedContentType)
 }
 
 func TestReadHandlerForErrorReadingBody(t *testing.T) {
@@ -185,52 +185,52 @@ func TestReadHandlerForErrorReadingBody(t *testing.T) {
 	mr := &mockReader{rc: &mockReaderCloser{err: errors.New("Some error")}}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
 
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 502, "{\"message\":\"Error while communicating to other service\"}")
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 502, "{\"message\":\"Error while communicating to other service\"}", ExpectedContentType)
 }
 
 func TestReadHandlerCountOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{count: 1337}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/__count", 200, "1337")
+	assertRequestAndResponseFromRouter(t, r, "/__count", 200, "1337", ExpectedContentType)
 }
 
 func TestReadHandlerCountFailsReturnsInternalServerError(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{returnError: errors.New("Some error from reader though")}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/__count", 500, "{\"message\":\"Unknown internal error\"}")
+	assertRequestAndResponseFromRouter(t, r, "/__count", 500, "{\"message\":\"Unknown internal error\"}", ExpectedContentType)
 }
 
 func TestReaderHandlerIdsOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "PAYLOAD"}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/__ids", 200, "PAYLOAD")
+	assertRequestAndResponseFromRouter(t, r, "/__ids", 200, "PAYLOAD", "application/octet-stream")
 }
 
 func TestReaderHandlerIdsFailsReturnsInternalServerError(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{returnError: errors.New("Some error from reader though")}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/__ids", 500, "{\"message\":\"Unknown internal error\"}")
+	assertRequestAndResponseFromRouter(t, r, "/__ids", 500, "{\"message\":\"Unknown internal error\"}", ExpectedContentType)
 }
 
 func TestHandleGetAllOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "PAYLOAD"}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/", 200, "PAYLOAD")
+	assertRequestAndResponseFromRouter(t, r, "/", 200, "PAYLOAD", "application/octet-stream")
 }
 
 func TestHandleGetAllFailsReturnsInternalServerError(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{returnError: errors.New("Some error from reader though")}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
-	assertRequestAndResponseFromRouter(t, r, "/", 500, "{\"message\":\"Unknown internal error\"}")
+	assertRequestAndResponseFromRouter(t, r, "/", 500, "{\"message\":\"Unknown internal error\"}", ExpectedContentType)
 }
 
-func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string) *httptest.ResponseRecorder {
+func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string, expectedContentType string) *httptest.ResponseRecorder {
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("GET", url, ""))
@@ -238,6 +238,9 @@ func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string,
 	if expectedBody != "" {
 		assert.Equal(t, expectedBody, rec.Body.String())
 	}
+	ct, ok := rec.HeaderMap["Content-Type"]
+	assert.True(t, ok)
+	assert.Equal(t, expectedContentType, ct[0])
 
 	return rec
 }
@@ -300,10 +303,11 @@ type mockReader struct {
 	payload     string
 	rc          io.ReadCloser
 	returnError error
+	returnCT    string
 	count       int64
 }
 
-func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, error) {
+func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	r.Lock()
 	defer r.Unlock()
 	log.Infof("Got request for uuid: %v", uuid)
@@ -318,7 +322,7 @@ func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, error) {
 		body = r.rc
 	}
 
-	return r.payload != "" || r.rc != nil, body, r.returnError
+	return r.payload != "" || r.rc != nil, body, &r.returnCT, r.returnError
 }
 
 func (r *mockReader) Head(uuid string) (bool, error) {
