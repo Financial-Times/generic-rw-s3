@@ -93,9 +93,9 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 	svc := s3.New(sess)
 
 	w := service.NewS3Writer(svc, bucketName, bucketPrefix)
-	wh := service.NewWriterHandler(w)
-
 	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks))
+
+	wh := service.NewWriterHandler(w, r)
 	rh := service.NewReaderHandler(r)
 
 	servicesRouter := mux.NewRouter()
