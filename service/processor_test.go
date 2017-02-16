@@ -127,6 +127,25 @@ func TestWritingToS3(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", body)
 }
 
+func TestWritingToS3WithNoContentType(t *testing.T) {
+	w, s := getWriter()
+	p := []byte("PAYLOAD")
+	var err error
+	err = w.Write(expectedUUID, &p, "")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, s.putObjectInput)
+	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
+	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
+	assert.Nil(t, s.putObjectInput.ContentType)
+
+	rs := s.putObjectInput.Body
+	assert.NotNil(t, rs)
+	ba, err := ioutil.ReadAll(rs)
+	assert.NoError(t, err)
+	body := string(ba[:])
+	assert.Equal(t, "PAYLOAD", body)
+}
+
 func TestFailingToWriteToS3(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")

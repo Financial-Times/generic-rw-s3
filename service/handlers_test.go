@@ -166,6 +166,13 @@ func TestReadHandlerForUUID(t *testing.T) {
 	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content", "return/type")
 }
 
+func TestReadHandlerForUUIDAndNoContentType(t *testing.T) {
+	r := mux.NewRouter()
+	mr := &mockReader{payload: "Some content"}
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr))
+	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content", "")
+}
+
 func TestReadHandlerForUUIDNotFound(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{}

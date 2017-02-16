@@ -254,10 +254,13 @@ func (w *S3Writer) Delete(uuid string) error {
 func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 
 	params := &s3.PutObjectInput{
-		Bucket:      aws.String(w.bucketName),
-		Key:         aws.String(getKey(w.bucketPrefix, uuid)),
-		Body:        bytes.NewReader(*b),
-		ContentType: aws.String(ct),
+		Bucket: aws.String(w.bucketName),
+		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
+		Body:   bytes.NewReader(*b),
+	}
+
+	if ct != "" {
+		params.ContentType = aws.String(ct)
 	}
 
 	resp, err := w.svc.PutObject(params)
@@ -419,7 +422,10 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rw.Header().Set("Content-Type", *ct)
+	if ct != nil || *ct != "" {
+		rw.Header().Set("Content-Type", *ct)
+	}
+
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(b)
 }
