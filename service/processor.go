@@ -80,7 +80,11 @@ func (r *S3Reader) Count() (int64, error) {
 	c := int64(0)
 	err := r.svc.ListObjectsV2Pages(r.getListObjectsV2Input(),
 		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
-			c = c + *page.KeyCount
+			for _, o := range page.Contents {
+				if (!strings.HasSuffix(*o.Key, "/") && !strings.HasPrefix(*o.Key, "__")) && (*o.Key != ".") {
+					c++
+				}
+			}
 			return !lastPage
 		})
 	return c, err
@@ -191,8 +195,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 	return r.svc.ListObjectsV2Pages(r.getListObjectsV2Input(),
 		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 			for _, o := range page.Contents {
-
-				if !strings.HasSuffix(*o.Key, "/") && (*o.Key != ".") {
+				if (!strings.HasSuffix(*o.Key, "/") && !strings.HasPrefix(*o.Key, "__")) && (*o.Key != ".") {
 					var key string
 					if r.bucketPrefix == "" {
 						key = *o.Key

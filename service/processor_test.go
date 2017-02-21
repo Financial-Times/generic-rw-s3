@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -221,21 +222,37 @@ func TestGetFromS3WithNoneAWSError(t *testing.T) {
 
 func TestGetCountFromS3(t *testing.T) {
 	r, s := getReader()
+	lo1 := generateKeys(100)
+	lo2 := generateKeys(1)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
-		{KeyCount: aws.Int64(100)},
-		{KeyCount: aws.Int64(1)},
+		&lo1,
+		&lo2,
 	}
 	i, err := r.Count()
 	assert.NoError(t, err)
 	assert.Equal(t, int64(101), i)
 }
 
+func generateKeys(count int) s3.ListObjectsV2Output {
+	keys := make([]*s3.Object, count+2)
+	for i := 0; i < count; i++ {
+		keys[i] = &s3.Object{Key: aws.String(fmt.Sprintf("test/prefix/123e4567/e89b/12d3/a456/%012d", i))}
+	}
+	keys[count] = &s3.Object{Key: aws.String(fmt.Sprintf("test/prefix/123e4567/e89b/12d3/a456/%012d/", count))} // ignored as ends with '/'
+	keys[count+1] = &s3.Object{Key: aws.String(fmt.Sprintf("__gtg %012d/", count+1))}                           // ignored as starts with '__'
+	return s3.ListObjectsV2Output{
+		KeyCount: aws.Int64(int64(count + 2)),
+		Contents: keys,
+	}
+}
+
 func TestGetCountFromS3WithoutPrefix(t *testing.T) {
 	r, s := getReaderNoPrefix()
-
+	lo1 := generateKeys(100)
+	lo2 := generateKeys(1)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
-		{KeyCount: aws.Int64(100)},
-		{KeyCount: aws.Int64(1)},
+		&lo1,
+		&lo2,
 	}
 	i, err := r.Count()
 	assert.NoError(t, err)
@@ -357,6 +374,7 @@ func TestReaderHandler_HandleGetAllOK(t *testing.T) {
 				{Key: aws.String("test/prefix/UUID-2")},
 				{Key: aws.String("test/prefix/UUID-3")},
 				{Key: aws.String("test/prefix/UUID-4")},
+				{Key: aws.String("__gtg")}, // ignored as starts with '__'
 				{Key: aws.String("test/prefix/UUID-5")},
 			},
 		},
@@ -367,6 +385,7 @@ func TestReaderHandler_HandleGetAllOK(t *testing.T) {
 				{Key: aws.String("test/prefix/UUID-7")},
 				{Key: aws.String("test/prefix/UUID-8")},
 				{Key: aws.String("test/prefix/UUID-9")},
+				{Key: aws.String("test/prefix/folder/")}, // ignored as ends with '/'
 				{Key: aws.String("test/prefix/UUID-10")},
 			},
 		},
