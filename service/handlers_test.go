@@ -66,13 +66,22 @@ func TestAddAdminHandlers(t *testing.T) {
 
 	t.Run("/_gtg bad can't write", func(t *testing.T) {
 		mw.returnError = errors.New("S3 write error")
+		mw.deleteError = nil
 		mr.returnError = nil
 		assertRequestAndResponse(t, "/__gtg", 503, "")
 	})
 
 	t.Run("/_gtg bad can't read", func(t *testing.T) {
 		mw.returnError = nil
+		mw.deleteError = nil
 		mr.returnError = errors.New("S3 read error")
+		assertRequestAndResponse(t, "/__gtg", 503, "")
+	})
+
+	t.Run("/_gtg bad can't delete", func(t *testing.T) {
+		mw.returnError = nil
+		mw.deleteError = errors.New("S3 delete error")
+		mr.returnError = nil
 		assertRequestAndResponse(t, "/__gtg", 503, "")
 	})
 }
@@ -369,6 +378,7 @@ type mockWriter struct {
 	uuid        string
 	payload     string
 	returnError error
+	deleteError error
 	ct          string
 }
 
@@ -376,7 +386,10 @@ func (mw *mockWriter) Delete(uuid string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
-	return mw.returnError
+	if mw.returnError != nil {
+		return mw.returnError
+	}
+	return mw.deleteError
 }
 
 func (mw *mockWriter) Write(uuid string, b *[]byte, ct string) error {

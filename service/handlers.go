@@ -59,17 +59,23 @@ func (c *checker) healthCheck() (string, error) {
 
 func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	pl := []byte("{}")
-	gtg := "__gtg_" + time.Now().String()
+	gtg := "__gtg_" + time.Now().Format(time.RFC3339)
 	var err error
 	err = c.w.Write(gtg, &pl, "application/json")
 	if err != nil {
-		log.Errorf("Could not write %v", err.Error())
+		log.Errorf("Could not write key=%v, %v", gtg, err.Error())
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	_, _, _, err = c.r.Get(gtg)
 	if err != nil {
-		log.Errorf("Could not read %v", err.Error())
+		log.Errorf("Could not read key=%v, %v", gtg, err.Error())
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := c.w.Delete(gtg); err != nil {
+		log.Errorf("Could not delete gtg=%v, %v", gtg, err.Error())
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
