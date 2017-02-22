@@ -134,7 +134,6 @@ func (r *S3Reader) GetAll() (io.PipeReader, error) {
 func (r *S3Reader) getItemWorker(w int, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
 	defer wg.Done()
 	for uuid := range keys {
-		log.Infof("worker %v, getting uuid : %v", w, *uuid)
 		if found, i, _, _ := r.Get(*uuid); found {
 			items <- &i
 		}
@@ -201,7 +200,6 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 						key = *o.Key
 					} else {
 						k := strings.SplitAfter(*o.Key, r.bucketPrefix+"/")
-						log.Infof("k: %v", k)
 						key = k[1]
 					}
 					uuid := strings.Replace(key, "/", "-", -1)
@@ -268,8 +266,6 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 
 	resp, err := w.svc.PutObject(params)
 
-	log.Infof("Resp: %v", resp)
-
 	if err != nil {
 		log.Infof("Error found, Resp was : %v", resp)
 		return err
@@ -316,12 +312,10 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if exist {
-		log.Infof("Wrote '%v' succesfully", uuid)
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte("{\"message\":\"UPDATED\"}"))
 
 	} else {
-		log.Infof("Wrote '%v' succesfully", uuid)
 		rw.WriteHeader(http.StatusCreated)
 		rw.Write([]byte("{\"message\":\"CREATED\"}"))
 	}
