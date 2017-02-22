@@ -109,12 +109,12 @@ func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
+	r.ServeHTTP(rec, newRequest("PUT", "/89d15f70-640d-11e4-9803-0800200c9a66", "PAYLOAD"))
 
 	assert.Equal(t, 200, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
-	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
-	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mr.headUuid)
+	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
+	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mr.headUuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
 	assert.Equal(t, "{\"message\":\"UPDATED\"}", rec.Body.String())
 }

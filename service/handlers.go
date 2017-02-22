@@ -102,7 +102,7 @@ func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
 		"GET": http.HandlerFunc(rh.HandleGetAll),
 	}
 
-	servicesRouter.Handle("/{uuid:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[34][0-9a-fA-F]{3}-[89ab][0-9a-fA-F]{3}-[0-9a-fA-F]{12}}", mh)
+	servicesRouter.Handle("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", mh)
 	servicesRouter.Handle("/__count", ch)
 	servicesRouter.Handle("/__ids", ih)
 	servicesRouter.Handle("/", ah)
