@@ -9,8 +9,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
+	"net"
 	"net/http"
 	"os"
+	"time"
+)
+
+const (
+	SpareWorkers = 10 // Workers for things like health check, gtg, count, etc...
 )
 
 func main() {
@@ -86,6 +92,20 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 		&aws.Config{
 			Region:     aws.String(awsRegion),
 			MaxRetries: aws.Int(1),
+			HTTPClient: &http.Client{
+				Transport: &http.Transport{
+					Proxy: http.ProxyFromEnvironment,
+					DialContext: (&net.Dialer{
+						Timeout:   30 * time.Second,
+						KeepAlive: 30 * time.Second,
+					}).DialContext,
+					MaxIdleConns:          wrks + SpareWorkers,
+					IdleConnTimeout:       90 * time.Second,
+					MaxIdleConnsPerHost:   wrks + SpareWorkers,
+					TLSHandshakeTimeout:   3 * time.Second,
+					ExpectContinueTimeout: 1 * time.Second,
+				},
+			},
 		})
 	if err != nil {
 		log.Fatalf("Failed to create AWS session: %v", err)

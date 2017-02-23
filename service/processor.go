@@ -77,16 +77,37 @@ func (r *S3Reader) Head(uuid string) (bool, error) {
 }
 
 func (r *S3Reader) Count() (int64, error) {
-	c := int64(0)
+	cc := make(chan *s3.ListObjectsV2Output, 10)
+	rc := make(chan int64, 1)
+
+	go func() {
+		t := int64(0)
+		for i := range cc {
+			for _, o := range i.Contents {
+				if (!strings.HasSuffix(*o.Key, "/") && !strings.HasPrefix(*o.Key, "__")) && (*o.Key != ".") {
+					t++
+				}
+			}
+		}
+		rc <- t
+	}()
+
 	err := r.svc.ListObjectsV2Pages(r.getListObjectsV2Input(),
 		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
-			for _, o := range page.Contents {
-				if (!strings.HasSuffix(*o.Key, "/") && !strings.HasPrefix(*o.Key, "__")) && (*o.Key != ".") {
-					c++
-				}
+			cc <- page
+
+			if lastPage {
+				close(cc)
 			}
 			return !lastPage
 		})
+
+	var c int64
+	if err == nil {
+		c = <-rc
+	} else {
+		close(rc)
+	}
 	return c, err
 }
 
@@ -134,7 +155,6 @@ func (r *S3Reader) GetAll() (io.PipeReader, error) {
 func (r *S3Reader) getItemWorker(w int, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
 	defer wg.Done()
 	for uuid := range keys {
-		log.Infof("worker %v, getting uuid : %v", w, *uuid)
 		if found, i, _, _ := r.Get(*uuid); found {
 			items <- &i
 		}
@@ -201,7 +221,6 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 						key = *o.Key
 					} else {
 						k := strings.SplitAfter(*o.Key, r.bucketPrefix+"/")
-						log.Infof("k: %v", k)
 						key = k[1]
 					}
 					uuid := strings.Replace(key, "/", "-", -1)
@@ -268,8 +287,6 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 
 	resp, err := w.svc.PutObject(params)
 
-	log.Infof("Resp: %v", resp)
-
 	if err != nil {
 		log.Infof("Error found, Resp was : %v", resp)
 		return err
@@ -316,12 +333,10 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if exist {
-		log.Infof("Wrote '%v' succesfully", uuid)
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte("{\"message\":\"UPDATED\"}"))
 
 	} else {
-		log.Infof("Wrote '%v' succesfully", uuid)
 		rw.WriteHeader(http.StatusCreated)
 		rw.Write([]byte("{\"message\":\"CREATED\"}"))
 	}
