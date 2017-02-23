@@ -97,7 +97,7 @@ func (m *mockS3Client) ListObjectsV2(loi *s3.ListObjectsV2Input) (*s3.ListObject
 func (m *mockS3Client) ListObjectsV2Pages(loi *s3.ListObjectsV2Input, fn func(p *s3.ListObjectsV2Output, lastPage bool) (shouldContinue bool)) error {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Get ListObjectsV2Pages: %v", loi)
+	log.Debugf("Get ListObjectsV2Pages: %v", loi)
 	m.listObjectsV2Input = append(m.listObjectsV2Input, loi)
 
 	for i := m.count; i < len(m.listObjectsV2Outputs); i++ {
@@ -222,8 +222,8 @@ func TestGetFromS3WithNoneAWSError(t *testing.T) {
 
 func TestGetCountFromS3(t *testing.T) {
 	r, s := getReader()
-	lo1 := generateKeys(100)
-	lo2 := generateKeys(1)
+	lo1 := generateKeys(100, false)
+	lo2 := generateKeys(1, false)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		&lo1,
 		&lo2,
@@ -233,23 +233,32 @@ func TestGetCountFromS3(t *testing.T) {
 	assert.Equal(t, int64(101), i)
 }
 
-func generateKeys(count int) s3.ListObjectsV2Output {
-	keys := make([]*s3.Object, count+2)
+func generateKeys(count int, addIgnoredKeys bool) s3.ListObjectsV2Output {
+	fc := count
+	if addIgnoredKeys {
+		fc = fc + 2
+	}
+	keys := make([]*s3.Object, fc)
 	for i := 0; i < count; i++ {
 		keys[i] = &s3.Object{Key: aws.String(fmt.Sprintf("test/prefix/123e4567/e89b/12d3/a456/%012d", i))}
 	}
-	keys[count] = &s3.Object{Key: aws.String(fmt.Sprintf("test/prefix/123e4567/e89b/12d3/a456/%012d/", count))} // ignored as ends with '/'
-	keys[count+1] = &s3.Object{Key: aws.String(fmt.Sprintf("__gtg %012d/", count+1))}                           // ignored as starts with '__'
+
+	if addIgnoredKeys {
+		keys[count] = &s3.Object{Key: aws.String(fmt.Sprintf("test/prefix/123e4567/e89b/12d3/a456/%012d/", count))} // ignored as ends with '/'
+		keys[count+1] = &s3.Object{Key: aws.String(fmt.Sprintf("__gtg %012d/", count+1))}                           // ignored as starts with '__'
+		count++
+	}
+
 	return s3.ListObjectsV2Output{
-		KeyCount: aws.Int64(int64(count + 2)),
+		KeyCount: aws.Int64(int64(fc)),
 		Contents: keys,
 	}
 }
 
 func TestGetCountFromS3WithoutPrefix(t *testing.T) {
 	r, s := getReaderNoPrefix()
-	lo1 := generateKeys(100)
-	lo2 := generateKeys(1)
+	lo1 := generateKeys(100, false)
+	lo2 := generateKeys(1, false)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		&lo1,
 		&lo2,
@@ -267,6 +276,23 @@ func TestGetCountFromS3Errors(t *testing.T) {
 	_, err := r.Count()
 	assert.Error(t, err)
 	assert.Equal(t, s.s3error, err)
+}
+
+func BenchmarkS3Reader_Count(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		b.StopTimer()
+		r, s := getReaderNoPrefix()
+		t := 1000
+		for i := 0; i < t; i++ {
+			var lo s3.ListObjectsV2Output
+			lo = generateKeys(t, true)
+			s.listObjectsV2Outputs = append(s.listObjectsV2Outputs, &lo)
+		}
+		b.StartTimer()
+		i, err := r.Count()
+		assert.NoError(b, err)
+		assert.Equal(b, int64(t*t), i)
+	}
 }
 
 func TestGetIdsFromS3(t *testing.T) {

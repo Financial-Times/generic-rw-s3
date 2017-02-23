@@ -77,16 +77,37 @@ func (r *S3Reader) Head(uuid string) (bool, error) {
 }
 
 func (r *S3Reader) Count() (int64, error) {
-	c := int64(0)
+	cc := make(chan *s3.ListObjectsV2Output, 10)
+	rc := make(chan int64, 1)
+
+	go func() {
+		t := int64(0)
+		for i := range cc {
+			for _, o := range i.Contents {
+				if (!strings.HasSuffix(*o.Key, "/") && !strings.HasPrefix(*o.Key, "__")) && (*o.Key != ".") {
+					t++
+				}
+			}
+		}
+		rc <- t
+	}()
+
 	err := r.svc.ListObjectsV2Pages(r.getListObjectsV2Input(),
 		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
-			for _, o := range page.Contents {
-				if (!strings.HasSuffix(*o.Key, "/") && !strings.HasPrefix(*o.Key, "__")) && (*o.Key != ".") {
-					c++
-				}
+			cc <- page
+
+			if lastPage {
+				close(cc)
 			}
 			return !lastPage
 		})
+
+	var c int64
+	if err == nil {
+		c = <-rc
+	} else {
+		close(rc)
+	}
 	return c, err
 }
 
