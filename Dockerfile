@@ -2,15 +2,15 @@ FROM golang:1.7-alpine3.5
 
 RUN mkdir -p "$GOPATH/src"
 
-ADD . "$GOPATH/src/generic-rw-s3"
+ADD . "$GOPATH/src/github.com/Financial-Times/generic-rw-s3"
 
-WORKDIR "$GOPATH/src/generic-rw-s3"
+WORKDIR "$GOPATH/src/github.com/Financial-Times/generic-rw-s3"
 
 RUN apk --no-cache --virtual .build-dependencies add git \
     && apk --no-cache --upgrade add ca-certificates \
     && update-ca-certificates --fresh \
     && git config --global http.https://gopkg.in.followRedirects true \
-    && cd $GOPATH/src/generic-rw-s3 \
+    && cd $GOPATH/src/github.com/Financial-Times/generic-rw-s3 \
     && BUILDINFO_PACKAGE="github.com/Financial-Times/service-status-go/buildinfo." \
     && VERSION="version=$(git describe --tag --always 2> /dev/null)" \
     && DATETIME="dateTime=$(date -u +%Y%m%d%H%M%S)" \

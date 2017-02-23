@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/Financial-Times/base-ft-rw-app-go/baseftrwapp"
 	"github.com/Financial-Times/generic-rw-s3/service"
+	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -78,34 +79,79 @@ func main() {
 		EnvVar: "LOG_METRICS",
 	})
 
+	sourceAddresses := app.Strings(cli.StringsOpt{
+		Name:   "source-addresses",
+		Value:  []string{},
+		Desc:   "Addresses used by the queue consumer to connect to the queue",
+		EnvVar: "SRC_ADDR",
+	})
+
+	sourceGroup := app.String(cli.StringOpt{
+		Name:   "source-group",
+		Value:  "",
+		Desc:   "Group used to read the messages from the queue",
+		EnvVar: "SRC_GROUP",
+	})
+
+	sourceTopic := app.String(cli.StringOpt{
+		Name:   "source-topic",
+		Value:  "",
+		Desc:   "The topic to read the meassages from",
+		EnvVar: "SRC_TOPIC",
+	})
+
+	sourceQueue := app.String(cli.StringOpt{
+		Name:   "source-queue",
+		Value:  "",
+		Desc:   "The queue to read the messages from",
+		EnvVar: "SRC_QUEUE",
+	})
+
+	sourceConcurrentProcessing := app.Bool(cli.BoolOpt{
+		Name:   "source-concurrent-processing",
+		Value:  false,
+		Desc:   "Whether the consumer uses concurrent processing for the messages",
+		EnvVar: "SRC_CONCURRENT_PROCESSING",
+	})
+
 	app.Action = func() {
+
+		qConf := consumer.QueueConfig{
+			Addrs:                *sourceAddresses,
+			Group:                *sourceGroup,
+			Topic:                *sourceTopic,
+			Queue:                *sourceQueue,
+			ConcurrentProcessing: *sourceConcurrentProcessing,
+		}
+
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
-		runServer(*port, *awsRegion, *bucketName, *bucketPrefix, *wrkSize)
+		runServer(*port, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
 	}
 	log.SetLevel(log.InfoLevel)
 	log.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(port string, awsRegion string, bucketName string, bucketPrefix string, wrks int) {
+func runServer(port string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
+	hc := http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			MaxIdleConns:          wrks + SpareWorkers,
+			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConnsPerHost:   wrks + SpareWorkers,
+			TLSHandshakeTimeout:   3 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
 	sess, err := session.NewSession(
 		&aws.Config{
 			Region:     aws.String(awsRegion),
 			MaxRetries: aws.Int(1),
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					Proxy: http.ProxyFromEnvironment,
-					DialContext: (&net.Dialer{
-						Timeout:   30 * time.Second,
-						KeepAlive: 30 * time.Second,
-					}).DialContext,
-					MaxIdleConns:          wrks + SpareWorkers,
-					IdleConnTimeout:       90 * time.Second,
-					MaxIdleConnsPerHost:   wrks + SpareWorkers,
-					TLSHandshakeTimeout:   3 * time.Second,
-					ExpectContinueTimeout: 1 * time.Second,
-				},
-			},
+			HTTPClient: &hc,
 		})
 	if err != nil {
 		log.Fatalf("Failed to create AWS session: %v", err)
@@ -122,7 +168,14 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 	service.Handlers(servicesRouter, wh, rh)
 	service.AddAdminHandlers(servicesRouter, svc, bucketName, w, r)
 
+	qp := service.NewQProcessor(w)
+
 	log.Infof("listening on %v", port)
+
+	c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
+
+	go c.Start()
+	defer c.Stop()
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Unable to start server: %v", err)
 	}
