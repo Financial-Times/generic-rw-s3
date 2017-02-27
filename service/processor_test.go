@@ -1,8 +1,11 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -10,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,7 +21,9 @@ import (
 )
 
 const (
-	expectedUUID = "123e4567-e89b-12d3-a456-426655440000"
+	expectedUUID        = "123e4567-e89b-12d3-a456-426655440000"
+	expectedMessageID   = "7654e321-b98e-3d12-654a-000042665544"
+	expectedContentType = "content/type"
 )
 
 type mockS3Client struct {
@@ -111,14 +117,14 @@ func (m *mockS3Client) ListObjectsV2Pages(loi *s3.ListObjectsV2Input, fn func(p 
 func TestWritingToS3(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
-	ct := "content/type"
+	ct := expectedContentType
 	var err error
 	err = w.Write(expectedUUID, &p, ct)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
 	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
-	assert.Equal(t, "content/type", *s.putObjectInput.ContentType)
+	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
 
 	rs := s.putObjectInput.Body
 	assert.NotNil(t, rs)
@@ -150,7 +156,7 @@ func TestWritingToS3WithNoContentType(t *testing.T) {
 func TestFailingToWriteToS3(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
-	ct := "content/type"
+	ct := expectedContentType
 	s.s3error = errors.New("S3 error")
 	err := w.Write(expectedUUID, &p, ct)
 	assert.Error(t, err)
@@ -159,13 +165,13 @@ func TestFailingToWriteToS3(t *testing.T) {
 func TestGetFromS3(t *testing.T) {
 	r, s := getReader()
 	s.payload = "PAYLOAD"
-	s.ct = "content/type"
+	s.ct = expectedContentType
 	b, i, ct, err := r.Get(expectedUUID)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.getObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.getObjectInput.Key)
 	assert.Equal(t, "testBucket", *s.getObjectInput.Bucket)
-	assert.Equal(t, "content/type", *ct)
+	assert.Equal(t, expectedContentType, *ct)
 	assert.True(t, b)
 	p, _ := ioutil.ReadAll(i)
 	assert.Equal(t, "PAYLOAD0", string(p[:]))
@@ -173,13 +179,13 @@ func TestGetFromS3(t *testing.T) {
 func TestGetFromS3NoPrefix(t *testing.T) {
 	r, s := getReaderNoPrefix()
 	s.payload = "PAYLOAD"
-	s.ct = "content/type"
+	s.ct = expectedContentType
 	b, i, ct, err := r.Get(expectedUUID)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.getObjectInput)
 	assert.Equal(t, "/123e4567/e89b/12d3/a456/426655440000", *s.getObjectInput.Key)
 	assert.Equal(t, "testBucket", *s.getObjectInput.Bucket)
-	assert.Equal(t, "content/type", *ct)
+	assert.Equal(t, expectedContentType, *ct)
 	assert.True(t, b)
 	p, _ := ioutil.ReadAll(i)
 	assert.Equal(t, "PAYLOAD0", string(p[:]))
@@ -292,6 +298,47 @@ func BenchmarkS3Reader_Count(b *testing.B) {
 		i, err := r.Count()
 		assert.NoError(b, err)
 		assert.Equal(b, int64(t*t), i)
+	}
+}
+func BenchmarkS3QProcessor_ProcessMsg(b *testing.B) {
+	m := getLargeKMsg()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		mw := &mockWriter{}
+		qp := NewQProcessor(mw)
+
+		qp.ProcessMsg(m)
+
+		assert.Equal(b, expectedUUID, mw.uuid)
+		assert.Equal(b, expectedContentType, mw.ct)
+	}
+}
+
+func getLargeKMsg() consumer.Message {
+	buf := new(bytes.Buffer)
+	je := json.NewEncoder(buf)
+	bd := make([]byte, 16777216)
+	rand.Read(bd)
+	c := struct {
+		Id   string `json:"uuid"`
+		Body []byte `json:"body"`
+	}{
+		Id:   expectedUUID,
+		Body: bd,
+	}
+	err := je.Encode(&c)
+	if err != nil {
+		log.Panicf("err encoding, %v", err.Error())
+	}
+
+	h := map[string]string{
+		"Message-Id":   expectedMessageID,
+		"X-Request-Id": "tid_some_id",
+		"Content-Type": expectedContentType,
+	}
+	return consumer.Message{
+		Headers: h,
+		Body:    buf.String(),
 	}
 }
 
@@ -525,6 +572,72 @@ func TestDelete(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, s.s3error, err)
 	})
+}
+
+func TestS3QProcessor_ProcessMsgCorrectly(t *testing.T) {
+	testCases := []struct {
+		uuid  string
+		ct    string
+		wUuid string
+		wCt   string
+	}{
+		{expectedUUID, expectedContentType, expectedUUID, expectedContentType},
+		{expectedUUID, "", expectedUUID, ""},
+		{"", expectedContentType, expectedMessageID, expectedContentType},
+	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Msg with [uuid=%v, ct=%v], expect [uuid=%v, ct=%v]", tc.uuid, tc.ct, tc.wUuid, tc.wCt), func(t *testing.T) {
+			mw := &mockWriter{}
+			qp := NewQProcessor(mw)
+			m := generateConsumerMessage(tc.ct, tc.uuid)
+
+			qp.ProcessMsg(m)
+
+			assert.Equal(t, tc.wUuid, mw.uuid)
+			assert.Equal(t, tc.wCt, mw.ct)
+			assert.Equal(t, m.Body, mw.payload)
+		})
+	}
+}
+
+func TestS3QProcessor_ProcessMsgNoneJsonShouldNotCallWriter(t *testing.T) {
+	mw := &mockWriter{}
+	qp := NewQProcessor(mw)
+	m := generateConsumerMessage(expectedContentType, expectedUUID)
+	m.Body = "none json data is here"
+	qp.ProcessMsg(m)
+	assert.False(t, mw.writeCalled)
+}
+
+func TestS3QProcessor_ProcessMsgDealsWithErrorsFromWriter(t *testing.T) {
+	mw := &mockWriter{}
+	mw.returnError = errors.New("Some error")
+	qp := NewQProcessor(mw)
+	m := generateConsumerMessage(expectedContentType, expectedUUID)
+	qp.ProcessMsg(m)
+	assert.True(t, mw.writeCalled)
+	assert.Equal(t, expectedUUID, mw.uuid)
+	assert.Equal(t, expectedContentType, mw.ct)
+	assert.Equal(t, m.Body, mw.payload)
+}
+
+func generateConsumerMessage(ct string, cid string) consumer.Message {
+	h := map[string]string{
+		"Message-Id":   expectedMessageID,
+		"X-Request-Id": "tid_some_id",
+	}
+	if ct != "" {
+		h["Content-Type"] = ct
+	}
+
+	return consumer.Message{
+		Body: fmt.Sprintf(`{
+		"uuid": "%v",
+		"random":"one",
+		"data": "e1wic29tZVwiOlwiZGF0YVwifQ=="
+		}`, cid),
+		Headers: h,
+	}
 }
 
 func getReader() (Reader, *mockS3Client) {

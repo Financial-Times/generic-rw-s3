@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -15,6 +16,48 @@ import (
 	"strings"
 	"sync"
 )
+
+type QProcessor interface {
+	ProcessMsg(m consumer.Message)
+}
+
+func NewQProcessor(w Writer) QProcessor {
+	return &S3QProcessor{w}
+}
+
+type S3QProcessor struct {
+	Writer
+}
+type KafkaMsg struct {
+	Id string `json:"uuid"`
+}
+
+func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
+	var uuid string
+	var ct string
+	var ok bool
+	tid := m.Headers["X-Request-Id"]
+	if ct, ok = m.Headers["Content-Type"]; !ok {
+		ct = ""
+	}
+
+	var km KafkaMsg
+	b := []byte(m.Body)
+	if err := json.Unmarshal(b, &km); err != nil {
+		log.Errorf("Could not unmarshall message with ID=%v, error=%v", m.Headers["Message-Id"], err.Error())
+		return
+	}
+
+	if uuid = km.Id; uuid == "" {
+		uuid = m.Headers["Message-Id"]
+	}
+
+	if err := r.Write(uuid, &b, ct); err != nil {
+		log.Errorf("Failed to write uuid=%v, transaction_id=%v, err=%v", uuid, tid, err.Error())
+	} else {
+		log.Infof("Wrote sucessfully uuid=%v, transaction_id=%v", uuid, tid)
+	}
+}
 
 type Reader interface {
 	Get(uuid string) (bool, io.ReadCloser, *string, error)
