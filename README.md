@@ -17,7 +17,7 @@ or update:
 ## Running
 
 
-`$GOPATH/bin/generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1"`
+`$GOPATH/bin/generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --source-addresses="<proyx_address>" --source-group="<consumer_group>" --source-topic="<topic_to_read>" --source-queue="kafka"`
 
 ```
 export|set PORT=8080
@@ -44,7 +44,8 @@ AWS_SECRET_ACCESS_KEY=MY-SECRET-KEY
 There are optional arguments as well:
 ```
 export|set BUCKET_PREFIX="bucketPrefix" # adds a prefix folder to all items uploaded
-export|set Workers=10 # Number of concurrent downloads when downloading all items. Default is 10
+export|set WORKERS=10 # Number of concurrent downloads when downloading all items. Default is 10
+export|set SRC_CONCURRENT_PROCESSING=true # Whether the consumer uses concurrent processing for the messages
 ```
 
 ## Endpoints
