@@ -101,3 +101,30 @@ Healthchecks: [http://localhost:8080/__health](http://localhost:8080/__health)
 Ping: [http://localhost:8080/ping](http://localhost:8080/ping) or [http://localhost:8080/__ping](http://localhost:8080/__ping)
 Build Info: [http://localhost:8080/build-info](http://localhost:8080/build-info) or [http://localhost:8080/build-info](http://localhost:8080/__build-info) 
 GTG: [http://localhost:8080/build-info](http://localhost:8080/__gtg) 
+
+
+### Notes
+
+#### S3 buckets
+
+For this to work you need to make sure that your AWS credentials has the following policy file on the bucket.
+```
+{
+	"Version": "2012-10-17",
+	"Id": "Policy12345678990",
+	"Statement": [
+		{
+			"Sid": "Stmt12345678990",
+			"Effect": "Allow",
+			"Principal": {
+				"AWS": "arn:aws:iam::<ID>:user/<AWS_KEY_ID>"
+			},
+			"Action": "s3:*",
+			"Resource": [
+				"arn:aws:s3:::<BUCKET_NAME>",
+				"arn:aws:s3:::<BUCKET_NAME>/*"
+			]
+		}
+	]
+}
+```
