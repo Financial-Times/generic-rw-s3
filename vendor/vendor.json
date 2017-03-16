@@ -1,0 +1,15 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "VMZe7KDihPz0L5z7D1UU1gXcM7I=",
+			"path": "github.com/Financial-Times/message-queue-gonsumer/consumer",
+			"revision": "de1397e8288b0c5feb8a3a7610dc3f4bc23e132a",
+			"revisionTime": "2017-02-13T15:08:44Z",
+			"version": "=remove-host-routing",
+			"versionExact": "remove-host-routing"
+		}
+	],
+	"rootPath": "github.com/Financial-Times/generic-rw-s3"
+}
