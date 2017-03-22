@@ -13,6 +13,7 @@ import (
 	"github.com/rcrowley/go-metrics"
 	"net/http"
 	"time"
+	"fmt"
 )
 
 func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer, reader Reader) {
@@ -83,7 +84,7 @@ func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
-func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
+func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler, resourcePath string) {
 	mh := handlers.MethodHandler{
 		"PUT":    http.HandlerFunc(wh.HandleWrite),
 		"GET":    http.HandlerFunc(rh.HandleGet),
@@ -101,9 +102,8 @@ func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
 	ah := handlers.MethodHandler{
 		"GET": http.HandlerFunc(rh.HandleGetAll),
 	}
-
-	servicesRouter.Handle("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", mh)
-	servicesRouter.Handle("/__count", ch)
-	servicesRouter.Handle("/__ids", ih)
-	servicesRouter.Handle("/", ah)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}"), mh)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__count"), ch)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__ids"), ih)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/"), ah)
 }
