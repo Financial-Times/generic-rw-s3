@@ -435,13 +435,6 @@ func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 	rw.Write(b)
 }
 
-func writeInternalServerError(err error, rw http.ResponseWriter) {
-	log.Errorf("Error from reader: %v", err.Error())
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(http.StatusInternalServerError)
-	rw.Write([]byte("{\"message\":\"Unknown internal error\"}"))
-}
-
 func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.GetAll()
 
