@@ -16,9 +16,13 @@ or update:
 
 ## Running
 
-
+### With read from kafka enabled
 `$GOPATH/bin/generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --source-addresses="<proyx_address>" --source-group="<consumer_group>" --source-topic="<topic_to_read>" --source-queue="kafka"`
 
+### With specified resource path
+`$GOPATH/bin/generic-rw-s3 --port=8080 --resourcePath="concepts" --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --`
+
+ 
 ```
 export|set PORT=8080
 export|set BUCKET_NAME='bucketName"
@@ -49,6 +53,7 @@ export|set SRC_CONCURRENT_PROCESSING=true # Whether the consumer uses concurrent
 ```
 
 ## Endpoints
+For complete API specification see [S3 Read/Write API Endpoint](https://docs.google.com/document/d/1Ck-o0Le9cXOfm-aVjiGmOT7ZTB5W5fDTsPqGkhzfa-U/edit#)
 
 ### PUT /UUID
 
