@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
@@ -13,7 +14,6 @@ import (
 	"github.com/rcrowley/go-metrics"
 	"net/http"
 	"time"
-	"fmt"
 )
 
 func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer, reader Reader) {
@@ -104,7 +104,7 @@ func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler, re
 	}
 
 	if resourcePath != "" {
-		resourcePath = fmt.Sprintf( "/%s", resourcePath)
+		resourcePath = fmt.Sprintf("/%s", resourcePath)
 	}
 	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}"), mh)
 	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__count"), ch)

@@ -449,7 +449,7 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
-	uuid :=uuid(r.URL.Path)
+	uuid := uuid(r.URL.Path)
 	f, i, ct, err := rh.reader.Get(uuid)
 	if err != nil {
 		readerServiceUnavailable(uuid, err, rw)
@@ -481,7 +481,7 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 }
 
 func uuid(path string) string {
-	parts :=strings.Split(path, "/")
+	parts := strings.Split(path, "/")
 	return parts[len(parts)-1]
 
 }

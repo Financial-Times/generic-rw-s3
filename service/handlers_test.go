@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	ExpectedContentType = "application/json"
+	ExpectedContentType  = "application/json"
 	ExpectedResourcePath = "bob"
 )
 
@@ -91,7 +91,7 @@ func TestRequestUrlMatchesResourcePathShouldHaveSuccessfulResponse(t *testing.T)
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{},"")
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, "")
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
 	assert.Equal(t, 201, rec.Code)
