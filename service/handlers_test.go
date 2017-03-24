@@ -18,7 +18,7 @@ import (
 
 const (
 	ExpectedContentType = "application/json"
-	ExpectedResourcePath = ""
+	ExpectedResourcePath = "bob"
 )
 
 func TestAddAdminHandlers(t *testing.T) {
@@ -91,9 +91,9 @@ func TestRequestUrlMatchesResourcePathShouldHaveSuccessfulResponse(t *testing.T)
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{},"nonempty")
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{},"")
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("PUT", "/nonempty/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
+	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
 	assert.Equal(t, 201, rec.Code)
 }
 
@@ -121,10 +121,6 @@ func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
 	assert.Equal(t, "{\"message\":\"CREATED\"}", rec.Body.String())
-}
-
-func withExpectedResourcePath(endpoint string) string {
-	return ExpectedResourcePath + endpoint
 }
 
 func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
@@ -233,7 +229,7 @@ func TestReadHandlerCountOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{count: 1337}
 	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/__count", 200, "1337", ExpectedContentType)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__count"), 200, "1337", ExpectedContentType)
 }
 
 func TestReadHandlerCountFailsReturnsServiceUnavailable(t *testing.T) {
@@ -426,4 +422,8 @@ func (mw *mockWriter) Write(uuid string, b *[]byte, ct string) error {
 	mw.ct = ct
 	mw.writeCalled = true
 	return mw.returnError
+}
+
+func withExpectedResourcePath(endpoint string) string {
+	return "/" + ExpectedResourcePath + endpoint
 }
