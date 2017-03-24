@@ -18,8 +18,7 @@ import (
 
 const (
 	ExpectedContentType = "application/json"
-	EmptyResourcePath = ""
-	NonEmptyResourcePath = "/notempty"
+	ExpectedResourcePath = ""
 )
 
 func TestAddAdminHandlers(t *testing.T) {
@@ -88,50 +87,34 @@ func TestAddAdminHandlers(t *testing.T) {
 	})
 }
 
-func TestMethodHandlerAcceptsNonEmptyResourcePath(t *testing.T) {
+func TestRequestUrlMatchesResourcePathShouldHaveSuccessfulResponse(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, NonEmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{},"nonempty")
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("PUT", withNonEmptyResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD"))
+	r.ServeHTTP(rec, newRequest("PUT", "/nonempty/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
 	assert.Equal(t, 201, rec.Code)
 }
 
-func TestCountHandlerAcceptsNonEmptyResourcePath(t *testing.T) {
+func TestRequestUrlDoesNotMatchResourcePathShouldHaveNotFoundResponse(t *testing.T) {
 	r := mux.NewRouter()
+	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), NonEmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, "nonempty")
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("GET", withNonEmptyResourcePath("/__count"), ""))
-	assert.Equal(t, 200, rec.Code)
-}
-
-func TestIdsHandlerAcceptsNonEmptyResourcePath(t *testing.T) {
-	r := mux.NewRouter()
-	mr := &mockReader{}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), NonEmptyResourcePath)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("GET", withNonEmptyResourcePath("/__ids"), ""))
-	assert.Equal(t, 200, rec.Code)
-}
-func TestGetAllHandlerAcceptsNonEmptyResourcePath(t *testing.T) {
-	r := mux.NewRouter()
-	mr := &mockReader{}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), NonEmptyResourcePath)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("GET", withNonEmptyResourcePath("/"), ""))
-	assert.Equal(t, 200, rec.Code)
+	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
+	assert.Equal(t, 404, rec.Code)
 }
 
 func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, EmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
+	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD"))
 
 	assert.Equal(t, 201, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
@@ -140,18 +123,18 @@ func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	assert.Equal(t, "{\"message\":\"CREATED\"}", rec.Body.String())
 }
 
-func withNonEmptyResourcePath(endpoint string) string {
-	return NonEmptyResourcePath + endpoint
+func withExpectedResourcePath(endpoint string) string {
+	return ExpectedResourcePath + endpoint
 }
 
 func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{found: true}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, EmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("PUT", "/89d15f70-640d-11e4-9803-0800200c9a66", "PAYLOAD"))
+	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
 
 	assert.Equal(t, 200, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
@@ -165,10 +148,10 @@ func TestWriterHandlerFailReadingBody(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, EmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequestBodyFail("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c"))
+	r.ServeHTTP(rec, newRequestBodyFail("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c")))
 	assert.Equal(t, 500, rec.Code)
 	assert.Equal(t, "{\"message\":\"Unknown internal error\"}", rec.Body.String())
 }
@@ -177,10 +160,10 @@ func TestWriterHandlerFailWrite(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{returnError: errors.New("error writing")}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, EmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("PUT", "/22f53313-85c6-46b2-94e7-cfde9322f26c", "PAYLOAD"))
+	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD"))
 	assert.Equal(t, 503, rec.Code)
 	assert.Equal(t, "{\"message\":\"Service currently unavailable\"}", rec.Body.String())
 }
@@ -189,10 +172,10 @@ func TestWriterHandlerDeleteReturnsOK(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, EmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("DELETE", "/22f53313-85c6-46b2-94e7-cfde9322f26c", ""))
+	r.ServeHTTP(rec, newRequest("DELETE", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), ""))
 	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
 	assert.Equal(t, 204, rec.Code)
 	assert.Empty(t, rec.Body.String())
@@ -202,10 +185,10 @@ func TestWriterHandlerDeleteFailsReturns503(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{returnError: errors.New("Some error from writer")}
 	mr := &mockReader{}
-	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, EmptyResourcePath)
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequest("DELETE", "/22f53313-85c6-46b2-94e7-cfde9322f26c", ""))
+	r.ServeHTTP(rec, newRequest("DELETE", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), ""))
 	assert.Equal(t, 503, rec.Code)
 	assert.Equal(t, "{\"message\":\"Service currently unavailable\"}", rec.Body.String())
 }
@@ -213,79 +196,79 @@ func TestWriterHandlerDeleteFailsReturns503(t *testing.T) {
 func TestReadHandlerForUUID(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "Some content", returnCT: "return/type"}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content", "return/type")
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), 200, "Some content", "return/type")
 }
 
 func TestReadHandlerForUUIDAndNoContentType(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "Some content"}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 200, "Some content", "")
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), 200, "Some content", "")
 }
 
 func TestReadHandlerForUUIDNotFound(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 404, "{\"message\":\"Item not found\"}", ExpectedContentType)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), 404, "{\"message\":\"Item not found\"}", ExpectedContentType)
 }
 
 func TestReadHandlerForErrorFromReader(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "something came back but", returnError: errors.New("Some error from reader though")}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
 }
 
 func TestReadHandlerForErrorReadingBody(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{rc: &mockReaderCloser{err: errors.New("Some error")}}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
 
-	assertRequestAndResponseFromRouter(t, r, "/22f53313-85c6-46b2-94e7-cfde9322f26c", 502, "{\"message\":\"Error while communicating to other service\"}", ExpectedContentType)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), 502, "{\"message\":\"Error while communicating to other service\"}", ExpectedContentType)
 }
 
 func TestReadHandlerCountOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{count: 1337}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
 	assertRequestAndResponseFromRouter(t, r, "/__count", 200, "1337", ExpectedContentType)
 }
 
 func TestReadHandlerCountFailsReturnsServiceUnavailable(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{returnError: errors.New("Some error from reader though")}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/__count", 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__count"), 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
 }
 
 func TestReaderHandlerIdsOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "PAYLOAD"}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/__ids", 200, "PAYLOAD", "application/octet-stream")
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__ids"), 200, "PAYLOAD", "application/octet-stream")
 }
 
 func TestReaderHandlerIdsFailsReturnsServiceUnavailable(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{returnError: errors.New("Some error from reader though")}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/__ids", 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__ids"), 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
 }
 
 func TestHandleGetAllOK(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{payload: "PAYLOAD"}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/", 200, "PAYLOAD", "application/octet-stream")
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/"), 200, "PAYLOAD", "application/octet-stream")
 }
 
 func TestHandleGetAllFailsReturnsServiceUnavailable(t *testing.T) {
 	r := mux.NewRouter()
 	mr := &mockReader{returnError: errors.New("Some error from reader though")}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr), EmptyResourcePath)
-	assertRequestAndResponseFromRouter(t, r, "/", 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
+	Handlers(r, WriterHandler{}, NewReaderHandler(mr), ExpectedResourcePath)
+	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/"), 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
 }
 
 func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string, expectedContentType string) *httptest.ResponseRecorder {

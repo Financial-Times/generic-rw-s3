@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-	"fmt"
 )
 
 const (
@@ -132,9 +131,7 @@ func main() {
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
-		if *resourcePath != "" {
-			*resourcePath = fmt.Sprintf( "/%s", *resourcePath)
-		}
+
 		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
 	}
 	log.SetLevel(log.InfoLevel)
@@ -183,7 +180,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 	log.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
-		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
+		c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
 		go c.Start()
 		defer c.Stop()
 	}
