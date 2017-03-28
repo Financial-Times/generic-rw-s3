@@ -62,7 +62,7 @@ func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	pl := []byte("{}")
 	gtg := "__gtg_" + time.Now().Format(time.RFC3339)
 	var err error
-	err = c.w.Write(gtg, &pl, "application/json")
+	err = c.w.Write(gtg, &pl, "application/json", "tid_gtg")
 	if err != nil {
 		log.Errorf("Could not write key=%v, %v", gtg, err.Error())
 		rw.WriteHeader(http.StatusServiceUnavailable)

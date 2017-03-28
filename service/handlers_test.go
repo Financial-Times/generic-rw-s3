@@ -401,6 +401,7 @@ type mockWriter struct {
 	returnError error
 	deleteError error
 	ct          string
+	tid         string
 	writeCalled bool
 }
 
@@ -414,12 +415,13 @@ func (mw *mockWriter) Delete(uuid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string) error {
+func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
 	mw.payload = string((*b)[:])
 	mw.ct = ct
+	mw.tid = tid
 	mw.writeCalled = true
 	return mw.returnError
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -36,7 +37,10 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var uuid string
 	var ct string
 	var ok bool
-	tid := m.Headers["X-Request-Id"]
+	tid := m.Headers[transactionid.TransactionIDHeader]
+	if tid == "" {
+		tid = transactionid.NewTransactionID()
+	}
 	if ct, ok = m.Headers["Content-Type"]; !ok {
 		ct = ""
 	}
@@ -52,7 +56,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	if err := r.Write(uuid, &b, ct); err != nil {
+	if err := r.Write(uuid, &b, ct, tid); err != nil {
 		log.Errorf("Failed to write uuid=%v, transaction_id=%v, err=%v", uuid, tid, err.Error())
 	} else {
 		log.Infof("Wrote sucessfully uuid=%v, transaction_id=%v", uuid, tid)
@@ -280,7 +284,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string) error
+	Write(uuid string, b *[]byte, contentType string, transactionId string) error
 	Delete(uuid string) error
 }
 
@@ -315,7 +319,7 @@ func (w *S3Writer) Delete(uuid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
+func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) error {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
 		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
@@ -325,6 +329,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 	if ct != "" {
 		params.ContentType = aws.String(ct)
 	}
+	addTransactionID(params, tid)
 
 	resp, err := w.svc.PutObject(params)
 
@@ -332,8 +337,13 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 		log.Errorf("Error found, Resp was : %v", resp)
 		return err
 	}
-
 	return nil
+}
+func addTransactionID(params *s3.PutObjectInput, tid string) {
+	if params.Metadata == nil {
+		params.Metadata = make(map[string]*string)
+	}
+	params.Metadata[transactionid.TransactionIDKey] = &tid
 }
 
 type WriterHandler struct {
@@ -359,14 +369,15 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		writerStatusInternalServerError(uuid, err, rw)
 		return
 	}
-	ct := r.Header.Get("Content-Type")
+
 	exist, err = w.reader.Head(uuid)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw)
 		return
 	}
-
-	err = w.writer.Write(uuid, &bs, ct)
+	ct := r.Header.Get("Content-Type")
+	tid := transactionid.GetTransactionIDFromRequest(r)
+	err = w.writer.Write(uuid, &bs, ct, tid)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw)
 		return
