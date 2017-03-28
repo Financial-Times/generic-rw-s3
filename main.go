@@ -172,7 +172,7 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 
 	log.Infof("listening on %v", port)
 
-	c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
+	c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
 
 	go c.Start()
 	defer c.Stop()
