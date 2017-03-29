@@ -329,7 +329,11 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) error {
 	if ct != "" {
 		params.ContentType = aws.String(ct)
 	}
-	addTransactionID(params, tid)
+
+	if params.Metadata == nil {
+		params.Metadata = make(map[string]*string)
+	}
+	params.Metadata[transactionid.TransactionIDKey] = &tid
 
 	resp, err := w.svc.PutObject(params)
 
@@ -338,12 +342,6 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) error {
 		return err
 	}
 	return nil
-}
-func addTransactionID(params *s3.PutObjectInput, tid string) {
-	if params.Metadata == nil {
-		params.Metadata = make(map[string]*string)
-	}
-	params.Metadata[transactionid.TransactionIDKey] = &tid
 }
 
 type WriterHandler struct {
@@ -423,7 +421,7 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.Ids()
 	defer pv.Close()
 	if err != nil {
-		readerServiceUnavailable("", err, rw)
+		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
 		return
 	}
 
@@ -450,7 +448,7 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.GetAll()
 
 	if err != nil {
-		readerServiceUnavailable("", err, rw)
+		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
 		return
 	}
 
@@ -463,7 +461,7 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 	uuid := uuid(r.URL.Path)
 	f, i, ct, err := rh.reader.Get(uuid)
 	if err != nil {
-		readerServiceUnavailable(uuid, err, rw)
+		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
 		return
 	}
 	if !f {
@@ -513,12 +511,10 @@ func writerServiceUnavailable(uuid string, err error, rw http.ResponseWriter) {
 	respondServiceUnavailable(err, rw)
 }
 
-func readerServiceUnavailable(uuid string, err error, rw http.ResponseWriter) {
-	if uuid != "" {
-		log.Errorf("Error from reader: '%v': %v", uuid, err.Error())
-	} else {
-		log.Errorf("Error from reader: %v", err.Error())
-	}
+func readerServiceUnavailable(requestURI string, err error, rw http.ResponseWriter) {
+
+	log.Errorf("Error from reader: %s. RequestURI: '%s'", err.Error(), requestURI)
+
 	rw.Header().Set("Content-Type", "application/json")
 	respondServiceUnavailable(err, rw)
 }

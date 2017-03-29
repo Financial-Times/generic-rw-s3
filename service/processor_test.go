@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"math/rand"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -137,24 +138,42 @@ func TestWritingToS3(t *testing.T) {
 }
 
 func TestWritingToS3WithTransactionID(t *testing.T) {
+	r := newRequest("PUT", "https://url", "Some body")
+	r.Header.Set(transactionid.TransactionIDHeader, expectedTransactionId)
+	mw := &mockWriter{}
+	mr := &mockReader{}
+	resWriter := httptest.NewRecorder()
+	handler := NewWriterHandler(mw, mr)
+
+	handler.HandleWrite(resWriter, r)
+
+	assert.Equal(t, expectedTransactionId, mw.tid)
+
 	w, s := getWriter()
-	p := []byte("PAYLOAD")
-	ct := expectedContentType
-	var err error
-	err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
+
+	err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+
 	assert.NoError(t, err)
-	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, expectedTransactionId, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
 }
 
 func TestWritingToS3WithNewTransactionID(t *testing.T) {
+	r := newRequest("PUT", "https://url", "Some body")
+	mw := &mockWriter{}
+	mr := &mockReader{}
+	resWriter := httptest.NewRecorder()
+	handler := NewWriterHandler(mw, mr)
+
+	handler.HandleWrite(resWriter, r)
+
+	assert.Equal(t, 14, len(mw.tid))
+
 	w, s := getWriter()
-	p := []byte("PAYLOAD")
-	ct := expectedContentType
-	var err error
-	err = w.Write(expectedUUID, &p, ct, "")
+
+	err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+
 	assert.NoError(t, err)
-	assert.NotEmpty(t, s.putObjectInput.Metadata[transactionid.TransactionIDKey])
+	assert.Equal(t, mw.tid, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
 }
 
 func TestWritingToS3WithNoContentType(t *testing.T) {
