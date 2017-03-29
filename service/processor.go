@@ -48,7 +48,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var km KafkaMsg
 	b := []byte(m.Body)
 	if err := json.Unmarshal(b, &km); err != nil {
-		log.Errorf("Could not unmarshall message with ID=%v, error=%v", m.Headers["Message-Id"], err.Error())
+		log.Errorf("Could not unmarshall message with ID=%v, transaction_id=%v, error=%v", m.Headers["Message-Id"], tid, err.Error())
 		return
 	}
 
