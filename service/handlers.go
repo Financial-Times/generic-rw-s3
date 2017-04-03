@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
@@ -61,7 +62,7 @@ func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	pl := []byte("{}")
 	gtg := "__gtg_" + time.Now().Format(time.RFC3339)
 	var err error
-	err = c.w.Write(gtg, &pl, "application/json")
+	err = c.w.Write(gtg, &pl, "application/json", "tid_gtg")
 	if err != nil {
 		log.Errorf("Could not write key=%v, %v", gtg, err.Error())
 		rw.WriteHeader(http.StatusServiceUnavailable)
@@ -83,7 +84,7 @@ func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
-func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
+func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler, resourcePath string) {
 	mh := handlers.MethodHandler{
 		"PUT":    http.HandlerFunc(wh.HandleWrite),
 		"GET":    http.HandlerFunc(rh.HandleGet),
@@ -102,8 +103,11 @@ func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler) {
 		"GET": http.HandlerFunc(rh.HandleGetAll),
 	}
 
-	servicesRouter.Handle("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", mh)
-	servicesRouter.Handle("/__count", ch)
-	servicesRouter.Handle("/__ids", ih)
-	servicesRouter.Handle("/", ah)
+	if resourcePath != "" {
+		resourcePath = fmt.Sprintf("/%s", resourcePath)
+	}
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}"), mh)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__count"), ch)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__ids"), ih)
+	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/"), ah)
 }

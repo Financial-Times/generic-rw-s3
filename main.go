@@ -30,6 +30,13 @@ func main() {
 		EnvVar: "APP_PORT",
 	})
 
+	resourcePath := app.String(cli.StringOpt{
+		Name:   "resourcePath",
+		Value:  "",
+		Desc:   "Request path parameter to identify a resource, e.g. /concepts",
+		EnvVar: "RESOURCE_PATH",
+	})
+
 	awsRegion := app.String(cli.StringOpt{
 		Name:   "awsRegion",
 		Value:  "eu-west-1",
@@ -123,16 +130,16 @@ func main() {
 			Queue:                *sourceQueue,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
-
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
-		runServer(*port, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
+
+		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
 	}
 	log.SetLevel(log.InfoLevel)
 	log.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(port string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
+func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
 	hc := http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -165,17 +172,18 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 	rh := service.NewReaderHandler(r)
 
 	servicesRouter := mux.NewRouter()
-	service.Handlers(servicesRouter, wh, rh)
+	service.Handlers(servicesRouter, wh, rh, resourcePath)
 	service.AddAdminHandlers(servicesRouter, svc, bucketName, w, r)
 
 	qp := service.NewQProcessor(w)
 
 	log.Infof("listening on %v", port)
 
-	c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
-
-	go c.Start()
-	defer c.Stop()
+	if qConf.Topic != "" {
+		c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
+		go c.Start()
+		defer c.Stop()
+	}
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Unable to start server: %v", err)
 	}
