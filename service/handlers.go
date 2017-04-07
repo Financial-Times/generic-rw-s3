@@ -2,6 +2,9 @@ package service
 
 import (
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
@@ -12,8 +15,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/rcrowley/go-metrics"
-	"net/http"
-	"time"
+	"github.com/Financial-Times/service-status-go/gtg"
 )
 
 func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer, reader Reader) {
@@ -35,8 +37,10 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 			Checker:          c.healthCheck,
 		}))
 
-	http.HandleFunc("/__gtg", c.gtgCheckHandler)
+	gtgHandler := status.NewGoodToGoHandler(c.gtgCheckHandler)
+	http.HandleFunc(status.GTGPath, gtgHandler)
 	http.Handle("/", monitoringRouter)
+
 }
 
 type checker struct {
@@ -58,30 +62,30 @@ func (c *checker) healthCheck() (string, error) {
 	return "Access to S3 bucket ok", err
 }
 
-func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
+func (c *checker) gtgCheckHandler() gtg.Status {
 	pl := []byte("{}")
-	gtg := "__gtg_" + time.Now().Format(time.RFC3339)
+	key := "__gtg_" + time.Now().Format(time.RFC3339)
 	var err error
-	err = c.w.Write(gtg, &pl, "application/json", "tid_gtg")
+	err = c.w.Write(key, &pl, "application/json", "tid_gtg")
 	if err != nil {
-		log.Errorf("Could not write key=%v, %v", gtg, err.Error())
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		return
+		msg := fmt.Sprintf("Could not write key=%v, %v", key, err.Error())
+		log.Error(msg)
+		return gtg.Status{GoodToGo: false, Message: msg}
 	}
-	_, _, _, err = c.r.Get(gtg)
+	_, _, _, err = c.r.Get(key)
 	if err != nil {
-		log.Errorf("Could not read key=%v, %v", gtg, err.Error())
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		return
+		msg := fmt.Sprintf("Could not read key=%v, %v", key, err.Error())
+		log.Error(msg)
+		return gtg.Status{GoodToGo: false, Message: msg}
 	}
 
-	if err := c.w.Delete(gtg); err != nil {
-		log.Errorf("Could not delete gtg=%v, %v", gtg, err.Error())
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		return
+	if err := c.w.Delete(key); err != nil {
+		msg := fmt.Sprintf("Could not delete key=%v, %v", key, err.Error())
+		log.Error(msg)
+		return gtg.Status{GoodToGo: false, Message: msg}
 	}
 
-	rw.WriteHeader(http.StatusOK)
+	return gtg.Status{GoodToGo: true}
 }
 
 func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler, resourcePath string) {

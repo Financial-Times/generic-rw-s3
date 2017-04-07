@@ -3,10 +3,6 @@ package service
 import (
 	"bytes"
 	"errors"
-	status "github.com/Financial-Times/service-status-go/httphandlers"
-	log "github.com/Sirupsen/logrus"
-	"github.com/gorilla/mux"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -14,6 +10,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	status "github.com/Financial-Times/service-status-go/httphandlers"
+	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -53,7 +54,7 @@ func TestAddAdminHandlers(t *testing.T) {
 	})
 
 	t.Run("/__gtg good", func(t *testing.T) {
-		assertRequestAndResponse(t, "/__gtg", 200, "")
+		assertRequestAndResponse(t, "/__gtg", 200, "OK")
 	})
 
 	t.Run("/__health bad", func(t *testing.T) {
@@ -65,25 +66,34 @@ func TestAddAdminHandlers(t *testing.T) {
 		assert.Contains(t, body, "\"S3 Bucket check\",\"ok\":false")
 	})
 
-	t.Run("/_gtg bad can't write", func(t *testing.T) {
-		mw.returnError = errors.New("S3 write error")
+	t.Run("/__gtg bad can't write", func(t *testing.T) {
+		errMsg := "S3 write error"
+		mw.returnError = errors.New(errMsg)
 		mw.deleteError = nil
 		mr.returnError = nil
-		assertRequestAndResponse(t, "/__gtg", 503, "")
+		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
+		body := rec.Body.String()
+		assert.Contains(t, body, errMsg)
 	})
 
-	t.Run("/_gtg bad can't read", func(t *testing.T) {
+	t.Run("/__gtg bad can't read", func(t *testing.T) {
+		errMsg := "S3 read error"
 		mw.returnError = nil
 		mw.deleteError = nil
-		mr.returnError = errors.New("S3 read error")
-		assertRequestAndResponse(t, "/__gtg", 503, "")
+		mr.returnError = errors.New(errMsg)
+		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
+		body := rec.Body.String()
+		assert.Contains(t, body, errMsg)
 	})
 
-	t.Run("/_gtg bad can't delete", func(t *testing.T) {
+	t.Run("/__gtg bad can't delete", func(t *testing.T) {
+		errMsg := "S3 delete error"
 		mw.returnError = nil
-		mw.deleteError = errors.New("S3 delete error")
+		mw.deleteError = errors.New(errMsg)
 		mr.returnError = nil
-		assertRequestAndResponse(t, "/__gtg", 503, "")
+		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
+		body := rec.Body.String()
+		assert.Contains(t, body, errMsg)
 	})
 }
 

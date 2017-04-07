@@ -526,7 +526,7 @@ PAYLOAD9
 }
 
 func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
-	r, s := getReaderwithMultipleWorkers()
+	r, s := getReaderWithMultipleWorkers()
 	s.payload = "PAYLOAD"
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		{KeyCount: aws.Int64(1)},
@@ -694,7 +694,7 @@ func getReader() (Reader, *mockS3Client) {
 	return NewS3Reader(s, "testBucket", "test/prefix", 1), s
 }
 
-func getReaderwithMultipleWorkers() (Reader, *mockS3Client) {
+func getReaderWithMultipleWorkers() (Reader, *mockS3Client) {
 	s := &mockS3Client{}
 	return NewS3Reader(s, "testBucket", "test/prefix", 15), s
 }

@@ -1,6 +1,11 @@
 package main
 
 import (
+	"net"
+	"net/http"
+	"os"
+	"time"
+
 	"github.com/Financial-Times/base-ft-rw-app-go/baseftrwapp"
 	"github.com/Financial-Times/generic-rw-s3/service"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
@@ -10,14 +15,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
-	"net"
-	"net/http"
-	"os"
-	"time"
 )
 
 const (
-	SpareWorkers = 10 // Workers for things like health check, gtg, count, etc...
+	spareWorkers = 10 // Workers for things like health check, gtg, count, etc...
 )
 
 func main() {
@@ -147,9 +148,9 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			MaxIdleConns:          wrks + SpareWorkers,
+			MaxIdleConns:          wrks + spareWorkers,
 			IdleConnTimeout:       90 * time.Second,
-			MaxIdleConnsPerHost:   wrks + SpareWorkers,
+			MaxIdleConnsPerHost:   wrks + spareWorkers,
 			TLSHandshakeTimeout:   3 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
