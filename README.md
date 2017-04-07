@@ -8,13 +8,10 @@ An API for reading/writing generic payloads up to S3. It can be setup to read th
 
 ## Installation
 
-For the first time:
-
-`go get github.com/Financial-Times/generic-rw-s3`
-
-or update:
-
-`go get -u github.com/Financial-Times/generic-rw-s3`
+1. go get github.com/kardianos/govendor
+2. go get github.com/Financial-Times/generic-rw-s3
+3. cd $GOPATH/src/github.com/Financial-Times/generic-rw-s3
+4. govendor sync
 
 
 ## Running locally

@@ -5,6 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	log "github.com/Sirupsen/logrus"
@@ -13,13 +21,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/stretchr/testify/assert"
-	"io/ioutil"
-	"math/rand"
-	"net/http/httptest"
-	"strconv"
-	"strings"
-	"sync"
-	"testing"
 )
 
 const (

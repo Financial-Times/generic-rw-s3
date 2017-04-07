@@ -3,6 +3,13 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	log "github.com/Sirupsen/logrus"
@@ -10,12 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	"io"
-	"io/ioutil"
-	"net/http"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 type QProcessor interface {
