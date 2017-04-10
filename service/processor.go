@@ -3,18 +3,20 @@ package service
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
-	log "github.com/Sirupsen/logrus"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	transactionid "github.com/Financial-Times/transactionid-utils-go"
+	log "github.com/Sirupsen/logrus"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 )
 
 type QProcessor interface {
@@ -36,7 +38,10 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var uuid string
 	var ct string
 	var ok bool
-	tid := m.Headers["X-Request-Id"]
+	tid := m.Headers[transactionid.TransactionIDHeader]
+	if tid == "" {
+		tid = transactionid.NewTransactionID()
+	}
 	if ct, ok = m.Headers["Content-Type"]; !ok {
 		ct = ""
 	}
@@ -44,7 +49,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var km KafkaMsg
 	b := []byte(m.Body)
 	if err := json.Unmarshal(b, &km); err != nil {
-		log.Errorf("Could not unmarshall message with ID=%v, error=%v", m.Headers["Message-Id"], err.Error())
+		log.Errorf("Could not unmarshall message with ID=%v, transaction_id=%v, error=%v", m.Headers["Message-Id"], tid, err.Error())
 		return
 	}
 
@@ -52,7 +57,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	if err := r.Write(uuid, &b, ct); err != nil {
+	if err := r.Write(uuid, &b, ct, tid); err != nil {
 		log.Errorf("Failed to write uuid=%v, transaction_id=%v, err=%v", uuid, tid, err.Error())
 	} else {
 		log.Infof("Wrote sucessfully uuid=%v, transaction_id=%v", uuid, tid)
@@ -280,7 +285,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string) error
+	Write(uuid string, b *[]byte, contentType string, transactionId string) error
 	Delete(uuid string) error
 }
 
@@ -309,15 +314,13 @@ func (w *S3Writer) Delete(uuid string) error {
 	}
 
 	if resp, err := w.svc.DeleteObject(params); err != nil {
-		log.Infof("Error found, Resp was : %v", resp)
+		log.Errorf("Error found, Resp was : %v", resp)
 		return err
 	}
-
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
-
+func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) error {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
 		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
@@ -328,13 +331,17 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string) error {
 		params.ContentType = aws.String(ct)
 	}
 
+	if params.Metadata == nil {
+		params.Metadata = make(map[string]*string)
+	}
+	params.Metadata[transactionid.TransactionIDKey] = &tid
+
 	resp, err := w.svc.PutObject(params)
 
 	if err != nil {
-		log.Infof("Error found, Resp was : %v", resp)
+		log.Errorf("Error found, Resp was : %v", resp)
 		return err
 	}
-
 	return nil
 }
 
@@ -351,8 +358,8 @@ func NewWriterHandler(writer Writer, reader Reader) WriterHandler {
 }
 
 func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
+	uuid := uuid(r.URL.Path)
 	rw.Header().Set("Content-Type", "application/json")
-	uuid := strings.Split(r.URL.Path, "/")[1]
 	var err error
 	var exist bool
 	bs, err := ioutil.ReadAll(r.Body)
@@ -362,16 +369,16 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ct := r.Header.Get("Content-Type")
 	exist, err = w.reader.Head(uuid)
 	if err != nil {
-		writerStatusInternalServerError(uuid, err, rw)
+		writerServiceUnavailable(uuid, err, rw)
 		return
 	}
-
-	err = w.writer.Write(uuid, &bs, ct)
+	ct := r.Header.Get("Content-Type")
+	tid := transactionid.GetTransactionIDFromRequest(r)
+	err = w.writer.Write(uuid, &bs, ct, tid)
 	if err != nil {
-		writerStatusInternalServerError(uuid, err, rw)
+		writerServiceUnavailable(uuid, err, rw)
 		return
 	}
 
@@ -384,6 +391,7 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		rw.Write([]byte("{\"message\":\"CREATED\"}"))
 	}
 }
+
 func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWriter) {
 	log.Errorf("Error writing '%v': %v", uuid, err.Error())
 	rw.WriteHeader(http.StatusInternalServerError)
@@ -391,10 +399,10 @@ func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWri
 }
 
 func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
-	uuid := strings.Split(r.URL.Path, "/")[1]
+	uuid := uuid(r.URL.Path)
 	if err := w.writer.Delete(uuid); err != nil {
 		rw.Header().Set("Content-Type", "application/json")
-		writerStatusInternalServerError(uuid, err, rw)
+		writerServiceUnavailable(uuid, err, rw)
 		return
 	}
 
@@ -414,7 +422,7 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.Ids()
 	defer pv.Close()
 	if err != nil {
-		writeInternalServerError(err, rw)
+		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
 		return
 	}
 
@@ -426,7 +434,7 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 	i, err := rh.reader.Count()
 	if err != nil {
-		writeInternalServerError(err, rw)
+		readerServiceUnavailable("", err, rw)
 		return
 	}
 	log.Infof("Got a count back of '%v'", i)
@@ -437,18 +445,11 @@ func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 	rw.Write(b)
 }
 
-func writeInternalServerError(err error, rw http.ResponseWriter) {
-	log.Errorf("Error from reader: %v", err.Error())
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(http.StatusInternalServerError)
-	rw.Write([]byte("{\"message\":\"Unknown internal error\"}"))
-}
-
 func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 	pv, err := rh.reader.GetAll()
 
 	if err != nil {
-		writeInternalServerError(err, rw)
+		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
 		return
 	}
 
@@ -458,18 +459,16 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
-
-	f, i, ct, err := rh.reader.Get(strings.Split(r.URL.Path, "/")[1])
-
+	uuid := uuid(r.URL.Path)
+	f, i, ct, err := rh.reader.Get(uuid)
+	if err != nil {
+		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
+		return
+	}
 	if !f {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusNotFound)
 		rw.Write([]byte("{\"message\":\"Item not found\"}"))
-		return
-	}
-
-	if err != nil {
-		writeInternalServerError(err, rw)
 		return
 	}
 
@@ -489,4 +488,34 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(b)
+}
+
+func uuid(path string) string {
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
+
+}
+
+func respondServiceUnavailable(err error, rw http.ResponseWriter) {
+	e, ok := err.(awserr.Error)
+	if ok {
+		errorCode := e.Code()
+		log.Errorf("Response from S3. %s. More info %s ",
+			errorCode, "https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html")
+	}
+	rw.WriteHeader(http.StatusServiceUnavailable)
+	rw.Write([]byte("{\"message\":\"Service currently unavailable\"}"))
+}
+
+func writerServiceUnavailable(uuid string, err error, rw http.ResponseWriter) {
+	log.Errorf("Error writing '%v': %v", uuid, err.Error())
+	respondServiceUnavailable(err, rw)
+}
+
+func readerServiceUnavailable(requestURI string, err error, rw http.ResponseWriter) {
+
+	log.Errorf("Error from reader: %s. RequestURI: '%s'", err.Error(), requestURI)
+
+	rw.Header().Set("Content-Type", "application/json")
+	respondServiceUnavailable(err, rw)
 }

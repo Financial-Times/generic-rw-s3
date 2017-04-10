@@ -5,25 +5,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/stretchr/testify/assert"
-	"io/ioutil"
-	"math/rand"
-	"strconv"
-	"strings"
-	"sync"
-	"testing"
 )
 
 const (
-	expectedUUID        = "123e4567-e89b-12d3-a456-426655440000"
-	expectedMessageID   = "7654e321-b98e-3d12-654a-000042665544"
-	expectedContentType = "content/type"
+	expectedUUID          = "123e4567-e89b-12d3-a456-426655440000"
+	expectedMessageID     = "7654e321-b98e-3d12-654a-000042665544"
+	expectedContentType   = "content/type"
+	expectedTransactionId = "tid_0123456789"
 )
 
 type mockS3Client struct {
@@ -119,7 +123,7 @@ func TestWritingToS3(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	err = w.Write(expectedUUID, &p, ct)
+	err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -134,11 +138,50 @@ func TestWritingToS3(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", body)
 }
 
+func TestWritingToS3WithTransactionID(t *testing.T) {
+	r := newRequest("PUT", "https://url", "Some body")
+	r.Header.Set(transactionid.TransactionIDHeader, expectedTransactionId)
+	mw := &mockWriter{}
+	mr := &mockReader{}
+	resWriter := httptest.NewRecorder()
+	handler := NewWriterHandler(mw, mr)
+
+	handler.HandleWrite(resWriter, r)
+
+	assert.Equal(t, expectedTransactionId, mw.tid)
+
+	w, s := getWriter()
+
+	err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedTransactionId, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
+}
+
+func TestWritingToS3WithNewTransactionID(t *testing.T) {
+	r := newRequest("PUT", "https://url", "Some body")
+	mw := &mockWriter{}
+	mr := &mockReader{}
+	resWriter := httptest.NewRecorder()
+	handler := NewWriterHandler(mw, mr)
+
+	handler.HandleWrite(resWriter, r)
+
+	assert.Equal(t, 14, len(mw.tid))
+
+	w, s := getWriter()
+
+	err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+
+	assert.NoError(t, err)
+	assert.Equal(t, mw.tid, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
+}
+
 func TestWritingToS3WithNoContentType(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
 	var err error
-	err = w.Write(expectedUUID, &p, "")
+	err = w.Write(expectedUUID, &p, "", expectedTransactionId)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -158,7 +201,7 @@ func TestFailingToWriteToS3(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	s.s3error = errors.New("S3 error")
-	err := w.Write(expectedUUID, &p, ct)
+	err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
 	assert.Error(t, err)
 }
 
@@ -310,7 +353,9 @@ func BenchmarkS3QProcessor_ProcessMsg(b *testing.B) {
 		qp.ProcessMsg(m)
 
 		assert.Equal(b, expectedUUID, mw.uuid)
+		assert.Equal(b, expectedTransactionId, mw.tid)
 		assert.Equal(b, expectedContentType, mw.ct)
+
 	}
 }
 
@@ -333,7 +378,7 @@ func getLargeKMsg() consumer.Message {
 
 	h := map[string]string{
 		"Message-Id":   expectedMessageID,
-		"X-Request-Id": "tid_some_id",
+		"X-Request-Id": expectedTransactionId,
 		"Content-Type": expectedContentType,
 	}
 	return consumer.Message{
@@ -482,7 +527,7 @@ PAYLOAD9
 }
 
 func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
-	r, s := getReaderwithMultipleWorkers()
+	r, s := getReaderWithMultipleWorkers()
 	s.payload = "PAYLOAD"
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		{KeyCount: aws.Int64(1)},
@@ -580,10 +625,12 @@ func TestS3QProcessor_ProcessMsgCorrectly(t *testing.T) {
 		ct    string
 		wUuid string
 		wCt   string
+		tid   string
 	}{
-		{expectedUUID, expectedContentType, expectedUUID, expectedContentType},
-		{expectedUUID, "", expectedUUID, ""},
-		{"", expectedContentType, expectedMessageID, expectedContentType},
+		{expectedUUID, expectedContentType, expectedUUID, expectedContentType, expectedTransactionId},
+		{expectedUUID, "", expectedUUID, "", expectedTransactionId},
+		{"", expectedContentType, expectedMessageID, expectedContentType, expectedTransactionId},
+		{expectedUUID, expectedContentType, expectedUUID, expectedContentType, ""},
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("Msg with [uuid=%v, ct=%v], expect [uuid=%v, ct=%v]", tc.uuid, tc.ct, tc.wUuid, tc.wCt), func(t *testing.T) {
@@ -596,6 +643,7 @@ func TestS3QProcessor_ProcessMsgCorrectly(t *testing.T) {
 			assert.Equal(t, tc.wUuid, mw.uuid)
 			assert.Equal(t, tc.wCt, mw.ct)
 			assert.Equal(t, m.Body, mw.payload)
+			assert.NotEmpty(t, mw.tid)
 		})
 	}
 }
@@ -617,14 +665,16 @@ func TestS3QProcessor_ProcessMsgDealsWithErrorsFromWriter(t *testing.T) {
 	qp.ProcessMsg(m)
 	assert.True(t, mw.writeCalled)
 	assert.Equal(t, expectedUUID, mw.uuid)
+	assert.Equal(t, expectedTransactionId, mw.tid)
 	assert.Equal(t, expectedContentType, mw.ct)
+
 	assert.Equal(t, m.Body, mw.payload)
 }
 
 func generateConsumerMessage(ct string, cid string) consumer.Message {
 	h := map[string]string{
 		"Message-Id":   expectedMessageID,
-		"X-Request-Id": "tid_some_id",
+		"X-Request-Id": expectedTransactionId,
 	}
 	if ct != "" {
 		h["Content-Type"] = ct
@@ -645,7 +695,7 @@ func getReader() (Reader, *mockS3Client) {
 	return NewS3Reader(s, "testBucket", "test/prefix", 1), s
 }
 
-func getReaderwithMultipleWorkers() (Reader, *mockS3Client) {
+func getReaderWithMultipleWorkers() (Reader, *mockS3Client) {
 	s := &mockS3Client{}
 	return NewS3Reader(s, "testBucket", "test/prefix", 15), s
 }

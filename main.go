@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	SpareWorkers = 10 // Workers for things like health check, gtg, count, etc...
+	spareWorkers = 10 // Workers for things like health check, gtg, count, etc...
 )
 
 func main() {
@@ -29,6 +29,13 @@ func main() {
 		Value:  "8080",
 		Desc:   "Port to listen on",
 		EnvVar: "APP_PORT",
+	})
+
+	resourcePath := app.String(cli.StringOpt{
+		Name:   "resourcePath",
+		Value:  "",
+		Desc:   "Request path parameter to identify a resource, e.g. /concepts",
+		EnvVar: "RESOURCE_PATH",
 	})
 
 	awsRegion := app.String(cli.StringOpt{
@@ -116,16 +123,16 @@ func main() {
 			Topic:                *sourceTopic,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
-
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
-		runServer(*port, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
+
+		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
 	}
 	log.SetLevel(log.InfoLevel)
 	log.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(port string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
+func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
 	hc := http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -133,9 +140,9 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			MaxIdleConns:          wrks + SpareWorkers,
+			MaxIdleConns:          wrks + spareWorkers,
 			IdleConnTimeout:       90 * time.Second,
-			MaxIdleConnsPerHost:   wrks + SpareWorkers,
+			MaxIdleConnsPerHost:   wrks + spareWorkers,
 			TLSHandshakeTimeout:   3 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
@@ -158,17 +165,18 @@ func runServer(port string, awsRegion string, bucketName string, bucketPrefix st
 	rh := service.NewReaderHandler(r)
 
 	servicesRouter := mux.NewRouter()
-	service.Handlers(servicesRouter, wh, rh)
+	service.Handlers(servicesRouter, wh, rh, resourcePath)
 	service.AddAdminHandlers(servicesRouter, svc, bucketName, w, r)
 
 	qp := service.NewQProcessor(w)
 
 	log.Infof("listening on %v", port)
 
-	c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
-
-	go c.Start()
-	defer c.Stop()
+	if qConf.Topic != "" {
+		c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
+		go c.Start()
+		defer c.Stop()
+	}
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Unable to start server: %v", err)
 	}
