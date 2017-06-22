@@ -59,6 +59,7 @@ func (c *checker) healthCheck() (string, error) {
 
 func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
 	if _, err := c.healthCheck(); err != nil {
+		log.Info("Healthcheck failed, gtg is bad.")
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
