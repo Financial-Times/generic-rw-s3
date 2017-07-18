@@ -3,10 +3,6 @@ package service
 import (
 	"bytes"
 	"errors"
-	status "github.com/Financial-Times/service-status-go/httphandlers"
-	log "github.com/Sirupsen/logrus"
-	"github.com/gorilla/mux"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -14,6 +10,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	status "github.com/Financial-Times/service-status-go/httphandlers"
+	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
+	"github.com/stretchr/testify/assert"
 )
 
 const (

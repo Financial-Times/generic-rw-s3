@@ -2,6 +2,8 @@ package service
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
@@ -12,8 +14,6 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/rcrowley/go-metrics"
-	"net/http"
-	"time"
 )
 
 func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer, reader Reader) {
@@ -59,28 +59,11 @@ func (c *checker) healthCheck() (string, error) {
 }
 
 func (c *checker) gtgCheckHandler(rw http.ResponseWriter, r *http.Request) {
-	pl := []byte("{}")
-	gtg := "__gtg_" + time.Now().Format(time.RFC3339)
-	var err error
-	err = c.w.Write(gtg, &pl, "application/json", "tid_gtg")
-	if err != nil {
-		log.Errorf("Could not write key=%v, %v", gtg, err.Error())
+	if _, err := c.healthCheck(); err != nil {
+		log.Info("Healthcheck failed, gtg is bad.")
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	_, _, _, err = c.r.Get(gtg)
-	if err != nil {
-		log.Errorf("Could not read key=%v, %v", gtg, err.Error())
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-
-	if err := c.w.Delete(gtg); err != nil {
-		log.Errorf("Could not delete gtg=%v, %v", gtg, err.Error())
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-
 	rw.WriteHeader(http.StatusOK)
 }
 
