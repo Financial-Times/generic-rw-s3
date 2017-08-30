@@ -60,7 +60,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	if err := r.Write(uuid, &b, ct, tid); err != nil {
+	if err := r.Write(uuid, "TODO", &b, ct, tid); err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"UUID":           uuid,
 			"transaction_id": tid,
@@ -74,11 +74,11 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 }
 
 type Reader interface {
-	Get(uuid string) (bool, io.ReadCloser, *string, error)
+	Get(uuid, publishedDate string) (bool, io.ReadCloser, *string, error)
 	Count() (int64, error)
 	Ids() (io.PipeReader, error)
 	GetAll() (io.PipeReader, error)
-	Head(uuid string) (bool, error)
+	Head(uuid, publishedDate string) (bool, error)
 }
 
 func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string, workers int16) Reader {
@@ -97,10 +97,10 @@ type S3Reader struct {
 	workers      int16
 }
 
-func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
+func (r *S3Reader) Get(uuid, publishedDate string) (bool, io.ReadCloser, *string, error) {
 	params := &s3.GetObjectInput{
 		Bucket: aws.String(r.bucketName),                 // Required
-		Key:    aws.String(getKey(r.bucketPrefix, uuid)), // Required
+		Key:    aws.String(getKey(r.bucketPrefix, publishedDate, uuid)), // Required
 	}
 	resp, err := r.svc.GetObject(params)
 
@@ -115,10 +115,10 @@ func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	return true, resp.Body, resp.ContentType, err
 }
 
-func (r *S3Reader) Head(uuid string) (bool, error) {
+func (r *S3Reader) Head(uuid, publishedDate string) (bool, error) {
 	params := &s3.HeadObjectInput{
 		Bucket: aws.String(r.bucketName),                 // Required
-		Key:    aws.String(getKey(r.bucketPrefix, uuid)), // Required
+		Key:    aws.String(getKey(r.bucketPrefix, publishedDate, uuid)), // Required
 	}
 
 	_, err := r.svc.HeadObject(params)
@@ -211,8 +211,9 @@ func (r *S3Reader) GetAll() (io.PipeReader, error) {
 
 func (r *S3Reader) getItemWorker(w int, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
 	defer wg.Done()
-	for uuid := range keys {
-		if found, i, _, _ := r.Get(*uuid); found {
+	for uuidWithPD := range keys {
+		splitted := strings.Split(*uuidWithPD, "_")
+		if found, i, _, _ := r.Get(splitted[0], splitted[1]); found {
 			items <- &i
 		}
 	}
@@ -280,7 +281,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 						k := strings.SplitAfter(*o.Key, r.bucketPrefix+"/")
 						key = k[1]
 					}
-					uuid := strings.Replace(key, "/", "-", -1)
+					uuid := strings.TrimSuffix(key, ".json")
 					keys <- &uuid
 				}
 			}
@@ -294,8 +295,8 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string, transactionId string) error
-	Delete(uuid string) error
+	Write(uuid, publishedDate string, b *[]byte, contentType string, transactionId string) error
+	Delete(uuid, publishedDate string) error
 }
 
 type S3Writer struct {
@@ -312,14 +313,14 @@ func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string) Writ
 	}
 }
 
-func getKey(bucketPrefix string, uuid string) string {
-	return bucketPrefix + "/" + strings.Replace(uuid, "-", "/", -1)
+func getKey(bucketPrefix, publishedDate, uuid string) string {
+	return bucketPrefix + "/" + publishedDate + "_" + uuid + ".json"
 }
 
-func (w *S3Writer) Delete(uuid string) error {
+func (w *S3Writer) Delete(uuid, publishedDate string) error {
 	params := &s3.DeleteObjectInput{
 		Bucket: aws.String(w.bucketName),                 // Required
-		Key:    aws.String(getKey(w.bucketPrefix, uuid)), // Required
+		Key:    aws.String(getKey(w.bucketPrefix, publishedDate, uuid)), // Required
 	}
 
 	if resp, err := w.svc.DeleteObject(params); err != nil {
@@ -329,10 +330,10 @@ func (w *S3Writer) Delete(uuid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) error {
+func (w *S3Writer) Write(uuid, publishedDate string, b *[]byte, ct string, tid string) error {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
-		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
+		Key:    aws.String(getKey(w.bucketPrefix, publishedDate, uuid)),
 		Body:   bytes.NewReader(*b),
 	}
 
@@ -368,6 +369,10 @@ func NewWriterHandler(writer Writer, reader Reader) WriterHandler {
 
 func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	uuid := uuid(r.URL.Path)
+	publishedDate := r.URL.Query().Get("publishedDate")
+	if publishedDate == "" {
+		publishedDate = "TODO"
+	}
 	rw.Header().Set("Content-Type", "application/json")
 	var err error
 	var exist bool
@@ -378,14 +383,14 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exist, err = w.reader.Head(uuid)
+	exist, err = w.reader.Head(uuid, publishedDate)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw)
 		return
 	}
 	ct := r.Header.Get("Content-Type")
 	tid := transactionid.GetTransactionIDFromRequest(r)
-	err = w.writer.Write(uuid, &bs, ct, tid)
+	err = w.writer.Write(uuid, publishedDate, &bs, ct, tid)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw)
 		return
@@ -409,7 +414,8 @@ func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWri
 
 func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
 	uuid := uuid(r.URL.Path)
-	if err := w.writer.Delete(uuid); err != nil {
+	publishedDate := r.URL.Query().Get("publishedDate")
+	if err := w.writer.Delete(uuid, publishedDate); err != nil {
 		rw.Header().Set("Content-Type", "application/json")
 		writerServiceUnavailable(uuid, err, rw)
 		return
@@ -469,7 +475,8 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 	uuid := uuid(r.URL.Path)
-	f, i, ct, err := rh.reader.Get(uuid)
+	publishedDate := r.URL.Query().Get("publishedDate")
+	f, i, ct, err := rh.reader.Get(uuid, publishedDate)
 	if err != nil {
 		readerServiceUnavailable(r.URL.RequestURI(), err, rw)
 		return

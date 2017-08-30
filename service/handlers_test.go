@@ -345,7 +345,7 @@ type mockReader struct {
 	count       int64
 }
 
-func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
+func (r *mockReader) Get(uuid, publishedDate string) (bool, io.ReadCloser, *string, error) {
 	r.Lock()
 	defer r.Unlock()
 	log.Infof("Got request for uuid: %v", uuid)
@@ -363,7 +363,7 @@ func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	return r.payload != "" || r.rc != nil, body, &r.returnCT, r.returnError
 }
 
-func (r *mockReader) Head(uuid string) (bool, error) {
+func (r *mockReader) Head(uuid, publishedDate string) (bool, error) {
 	r.Lock()
 	defer r.Unlock()
 	r.headUuid = uuid
@@ -406,7 +406,7 @@ type mockWriter struct {
 	writeCalled bool
 }
 
-func (mw *mockWriter) Delete(uuid string) error {
+func (mw *mockWriter) Delete(uuid, publishedDate string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
@@ -416,7 +416,7 @@ func (mw *mockWriter) Delete(uuid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) error {
+func (mw *mockWriter) Write(uuid, publishedDate string, b *[]byte, ct string, tid string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid

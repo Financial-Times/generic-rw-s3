@@ -200,7 +200,7 @@ func TestFailingToWriteToS3(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	s.s3error = errors.New("S3 error")
-	err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	err := w.Write(expectedUUID,"", &p, ct, expectedTransactionId)
 	assert.Error(t, err)
 }
 
@@ -208,7 +208,7 @@ func TestGetFromS3(t *testing.T) {
 	r, s := getReader()
 	s.payload = "PAYLOAD"
 	s.ct = expectedContentType
-	b, i, ct, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID,"")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.getObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.getObjectInput.Key)
@@ -222,7 +222,7 @@ func TestGetFromS3NoPrefix(t *testing.T) {
 	r, s := getReaderNoPrefix()
 	s.payload = "PAYLOAD"
 	s.ct = expectedContentType
-	b, i, ct, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID,"")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.getObjectInput)
 	assert.Equal(t, "/123e4567/e89b/12d3/a456/426655440000", *s.getObjectInput.Key)
@@ -237,7 +237,7 @@ func TestGetFromS3WhenNoSuchKey(t *testing.T) {
 	r, s := getReader()
 	s.s3error = awserr.New("NoSuchKey", "message", errors.New("Some error"))
 	s.payload = "PAYLOAD"
-	b, i, ct, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID,"")
 	assert.NoError(t, err)
 	assert.False(t, b)
 	assert.Nil(t, i)
@@ -248,7 +248,7 @@ func TestGetFromS3WithUnknownError(t *testing.T) {
 	r, s := getReader()
 	s.s3error = awserr.New("I don't know", "message", errors.New("Some error"))
 	s.payload = "ERROR PAYLOAD"
-	b, i, ct, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID,"")
 	assert.Error(t, err)
 	assert.Equal(t, s.s3error, err)
 	assert.False(t, b)
@@ -260,7 +260,7 @@ func TestGetFromS3WithNoneAWSError(t *testing.T) {
 	r, s := getReader()
 	s.s3error = errors.New("Some error")
 	s.payload = "ERROR PAYLOAD"
-	b, i, ct, err := r.Get(expectedUUID)
+	b, i, ct, err := r.Get(expectedUUID,"")
 	assert.Error(t, err)
 	assert.Equal(t, s.s3error, err)
 	assert.False(t, b)
