@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	status "github.com/Financial-Times/service-status-go/httphandlers"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 )
