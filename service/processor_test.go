@@ -122,7 +122,7 @@ func TestWritingToS3(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	err = w.Write(expectedUUID, "", &p, ct, expectedTransactionId)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -546,7 +546,7 @@ func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
 func TestS3Reader_Head(t *testing.T) {
 	r, s := getReader()
 	t.Run("Found", func(t *testing.T) {
-		found, err := r.Head(expectedUUID)
+		found, err := r.Head(expectedUUID, "")
 		assert.NoError(t, err)
 		assert.True(t, found)
 		assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.headObjectInput.Key)
@@ -556,14 +556,14 @@ func TestS3Reader_Head(t *testing.T) {
 
 	t.Run("NotFound", func(t *testing.T) {
 		s.s3error = awserr.New("NotFound", "message", errors.New("Some error"))
-		found, err := r.Head(expectedUUID)
+		found, err := r.Head(expectedUUID, "")
 		assert.NoError(t, err)
 		assert.False(t, found)
 	})
 
 	t.Run("Random Error", func(t *testing.T) {
 		s.s3error = errors.New("Random error")
-		found, err := r.Head(expectedUUID)
+		found, err := r.Head(expectedUUID, "")
 		assert.Error(t, err)
 		assert.False(t, found)
 		assert.Equal(t, s.s3error, err)
@@ -595,7 +595,7 @@ func TestDelete(t *testing.T) {
 
 	t.Run("With prefix", func(t *testing.T) {
 		w, s = getWriter()
-		err := w.Delete(expectedUUID)
+		err := w.Delete(expectedUUID, "")
 		assert.NoError(t, err)
 		assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.deleteObjectInput.Key)
 		assert.Equal(t, "testBucket", *s.deleteObjectInput.Bucket)
@@ -603,7 +603,7 @@ func TestDelete(t *testing.T) {
 
 	t.Run("Without prefix", func(t *testing.T) {
 		w, s = getWriterNoPrefix()
-		err := w.Delete(expectedUUID)
+		err := w.Delete(expectedUUID, "")
 		assert.NoError(t, err)
 		assert.Equal(t, "/123e4567/e89b/12d3/a456/426655440000", *s.deleteObjectInput.Key)
 		assert.Equal(t, "testBucket", *s.deleteObjectInput.Bucket)
@@ -612,7 +612,7 @@ func TestDelete(t *testing.T) {
 	t.Run("Fails", func(t *testing.T) {
 		w, s = getWriter()
 		s.s3error = errors.New("Some S3 error")
-		err := w.Delete(expectedUUID)
+		err := w.Delete(expectedUUID, "")
 		assert.Error(t, err)
 		assert.Equal(t, s.s3error, err)
 	})
