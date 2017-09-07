@@ -78,7 +78,7 @@ type Reader interface {
 	Count() (int64, error)
 	Ids() (io.PipeReader, error)
 	GetAll() (io.PipeReader, error)
-	Head(uuid, publishedDate string) (bool, error)
+	Head(uuid, date string) (bool, error)
 }
 
 func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string, workers int16) Reader {
@@ -115,10 +115,10 @@ func (r *S3Reader) Get(uuid, publishedDate string) (bool, io.ReadCloser, *string
 	return true, resp.Body, resp.ContentType, err
 }
 
-func (r *S3Reader) Head(uuid, publishedDate string) (bool, error) {
+func (r *S3Reader) Head(uuid, date string) (bool, error) {
 	params := &s3.HeadObjectInput{
-		Bucket: aws.String(r.bucketName),                 // Required
-		Key:    aws.String(getKey(r.bucketPrefix, publishedDate, uuid)), // Required
+		Bucket: aws.String(r.bucketName),                       // Required
+		Key:    aws.String(getKey(r.bucketPrefix, date, uuid)), // Required
 	}
 
 	_, err := r.svc.HeadObject(params)
@@ -295,8 +295,8 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid, publishedDate string, b *[]byte, contentType string, transactionId string) error
-	Delete(uuid, publishedDate string) error
+	Write(uuid, date string, b *[]byte, contentType string, transactionId string) error
+	Delete(uuid, date string) error
 }
 
 type S3Writer struct {
@@ -313,14 +313,14 @@ func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string) Writ
 	}
 }
 
-func getKey(bucketPrefix, publishedDate, uuid string) string {
-	return bucketPrefix + "/" + publishedDate + "_" + uuid + ".json"
+func getKey(bucketPrefix, date, uuid string) string {
+	return bucketPrefix + "/" + date + "_" + uuid + ".json"
 }
 
-func (w *S3Writer) Delete(uuid, publishedDate string) error {
+func (w *S3Writer) Delete(uuid, date string) error {
 	params := &s3.DeleteObjectInput{
-		Bucket: aws.String(w.bucketName),                 // Required
-		Key:    aws.String(getKey(w.bucketPrefix, publishedDate, uuid)), // Required
+		Bucket: aws.String(w.bucketName),                       // Required
+		Key:    aws.String(getKey(w.bucketPrefix, date, uuid)), // Required
 	}
 
 	if resp, err := w.svc.DeleteObject(params); err != nil {
@@ -330,10 +330,10 @@ func (w *S3Writer) Delete(uuid, publishedDate string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid, publishedDate string, b *[]byte, ct string, tid string) error {
+func (w *S3Writer) Write(uuid, date string, b *[]byte, ct string, tid string) error {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
-		Key:    aws.String(getKey(w.bucketPrefix, publishedDate, uuid)),
+		Key:    aws.String(getKey(w.bucketPrefix, date, uuid)),
 		Body:   bytes.NewReader(*b),
 	}
 
@@ -369,10 +369,8 @@ func NewWriterHandler(writer Writer, reader Reader) WriterHandler {
 
 func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	uuid := uuid(r.URL.Path)
-	publishedDate := r.URL.Query().Get("publishedDate")
-	if publishedDate == "" {
-		publishedDate = "TODO"
-	}
+	date := r.URL.Query().Get("date")
+
 	rw.Header().Set("Content-Type", "application/json")
 	var err error
 	var exist bool
@@ -383,14 +381,14 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exist, err = w.reader.Head(uuid, publishedDate)
+	exist, err = w.reader.Head(uuid, date)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw)
 		return
 	}
 	ct := r.Header.Get("Content-Type")
 	tid := transactionid.GetTransactionIDFromRequest(r)
-	err = w.writer.Write(uuid, publishedDate, &bs, ct, tid)
+	err = w.writer.Write(uuid, date, &bs, ct, tid)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw)
 		return
