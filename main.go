@@ -133,7 +133,7 @@ func main() {
 }
 
 func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
-	hc := http.Client{
+	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -151,7 +151,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 		&aws.Config{
 			Region:     aws.String(awsRegion),
 			MaxRetries: aws.Int(1),
-			HTTPClient: &hc,
+			HTTPClient: hc,
 		})
 	if err != nil {
 		log.Fatalf("Failed to create AWS session: %v", err)
@@ -166,14 +166,14 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 
 	servicesRouter := mux.NewRouter()
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, w, r)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName)
 
 	qp := service.NewQProcessor(w)
 
 	log.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
-		c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
+		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
 		go c.Start()
 		defer c.Stop()
 	}

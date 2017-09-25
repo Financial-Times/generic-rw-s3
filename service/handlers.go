@@ -3,12 +3,11 @@ package service
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
-	status "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/Financial-Times/service-status-go/gtg"
+	status "github.com/Financial-Times/service-status-go/httphandlers"
 	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -18,8 +17,8 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, writer Writer, reader Reader) {
-	c := checker{svc, bucketName, writer, reader}
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string) {
+	c := checker{svc, bucketName}
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
 	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
@@ -40,14 +39,11 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 	gtgHandler := status.NewGoodToGoHandler(c.gtgCheckHandler)
 	http.HandleFunc(status.GTGPath, gtgHandler)
 	http.Handle("/", monitoringRouter)
-
 }
 
 type checker struct {
 	s3iface.S3API
 	bucketName string
-	w          Writer
-	r          Reader
 }
 
 func (c *checker) healthCheck() (string, error) {
@@ -63,29 +59,11 @@ func (c *checker) healthCheck() (string, error) {
 }
 
 func (c *checker) gtgCheckHandler() gtg.Status {
-	pl := []byte("{}")
-	key := "__gtg_" + time.Now().Format(time.RFC3339)
-	var err error
-	err = c.w.Write(key, &pl, "application/json", "tid_gtg")
-	if err != nil {
-		msg := fmt.Sprintf("Could not write key=%v, %v", key, err.Error())
-		log.Error(msg)
-		return gtg.Status{GoodToGo: false, Message: msg}
+	if _, err := c.healthCheck(); err != nil {
+		log.Info("Healthcheck failed, gtg is bad.")
+		return gtg.Status{GoodToGo: false, Message: "Head request to S3 failed"}
 	}
-	_, _, _, err = c.r.Get(key)
-	if err != nil {
-		msg := fmt.Sprintf("Could not read key=%v, %v", key, err.Error())
-		log.Error(msg)
-		return gtg.Status{GoodToGo: false, Message: msg}
-	}
-
-	if err := c.w.Delete(key); err != nil {
-		msg := fmt.Sprintf("Could not delete key=%v, %v", key, err.Error())
-		log.Error(msg)
-		return gtg.Status{GoodToGo: false, Message: msg}
-	}
-
-	return gtg.Status{GoodToGo: true}
+	return gtg.Status{GoodToGo: true, Message: "OK"}
 }
 
 func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler, resourcePath string) {

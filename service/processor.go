@@ -49,7 +49,10 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var km KafkaMsg
 	b := []byte(m.Body)
 	if err := json.Unmarshal(b, &km); err != nil {
-		log.Errorf("Could not unmarshall message with ID=%v, transaction_id=%v, error=%v", m.Headers["Message-Id"], tid, err.Error())
+		log.WithError(err).WithFields(log.Fields{
+			"message_id":     m.Headers["Message-Id"],
+			"transaction_id": tid,
+		}).Error("Could not unmarshal message")
 		return
 	}
 
@@ -58,9 +61,15 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	}
 
 	if err := r.Write(uuid, &b, ct, tid); err != nil {
-		log.Errorf("Failed to write uuid=%v, transaction_id=%v, err=%v", uuid, tid, err.Error())
+		log.WithError(err).WithFields(log.Fields{
+			"UUID":           uuid,
+			"transaction_id": tid,
+		}).Error("Failed to write")
 	} else {
-		log.Infof("Wrote sucessfully uuid=%v, transaction_id=%v", uuid, tid)
+		log.WithError(err).WithFields(log.Fields{
+			"UUID":           uuid,
+			"transaction_id": tid,
+		}).Info("Wrote successfully")
 	}
 }
 
@@ -393,7 +402,7 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 }
 
 func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWriter) {
-	log.Errorf("Error writing '%v': %v", uuid, err.Error())
+	log.WithError(err).WithField("UUID", uuid).Error("Error writing object")
 	rw.WriteHeader(http.StatusInternalServerError)
 	rw.Write([]byte("{\"message\":\"Unknown internal error\"}"))
 }
@@ -406,7 +415,7 @@ func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Infof("Deleted '%v' succesfully", uuid)
+	log.WithField("UUID", uuid).Info("Delete succesful")
 	rw.WriteHeader(http.StatusNoContent)
 }
 
@@ -475,7 +484,7 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 	b, err := ioutil.ReadAll(i)
 
 	if err != nil {
-		log.Errorf("Error reading body: %v", err.Error())
+		log.WithError(err).Error("Error reading body")
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusBadGateway)
 		rw.Write([]byte("{\"message\":\"Error while communicating to other service\"}"))
@@ -493,7 +502,6 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 func uuid(path string) string {
 	parts := strings.Split(path, "/")
 	return parts[len(parts)-1]
-
 }
 
 func respondServiceUnavailable(err error, rw http.ResponseWriter) {
@@ -508,14 +516,12 @@ func respondServiceUnavailable(err error, rw http.ResponseWriter) {
 }
 
 func writerServiceUnavailable(uuid string, err error, rw http.ResponseWriter) {
-	log.Errorf("Error writing '%v': %v", uuid, err.Error())
+	log.WithError(err).WithField("UUID", uuid).Error("Error writing object")
 	respondServiceUnavailable(err, rw)
 }
 
 func readerServiceUnavailable(requestURI string, err error, rw http.ResponseWriter) {
-
-	log.Errorf("Error from reader: %s. RequestURI: '%s'", err.Error(), requestURI)
-
+	log.WithError(err).WithField("requestURI", requestURI).Error("Error from reader")
 	rw.Header().Set("Content-Type", "application/json")
 	respondServiceUnavailable(err, rw)
 }

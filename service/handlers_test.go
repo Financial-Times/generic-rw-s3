@@ -24,10 +24,8 @@ const (
 
 func TestAddAdminHandlers(t *testing.T) {
 	s := &mockS3Client{}
-	mw := &mockWriter{}
-	mr := &mockReader{payload: "Something found"}
 	r := mux.NewRouter()
-	AddAdminHandlers(r, s, "bucketName", mw, mr)
+	AddAdminHandlers(r, s, "bucketName")
 
 	t.Run(status.PingPath, func(t *testing.T) {
 		assertRequestAndResponse(t, status.PingPath, 200, "pong")
@@ -66,31 +64,9 @@ func TestAddAdminHandlers(t *testing.T) {
 		assert.Contains(t, body, "\"S3 Bucket check\",\"ok\":false")
 	})
 
-	t.Run("/__gtg bad can't write", func(t *testing.T) {
-		errMsg := "S3 write error"
-		mw.returnError = errors.New(errMsg)
-		mw.deleteError = nil
-		mr.returnError = nil
-		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
-		body := rec.Body.String()
-		assert.Contains(t, body, errMsg)
-	})
-
-	t.Run("/__gtg bad can't read", func(t *testing.T) {
-		errMsg := "S3 read error"
-		mw.returnError = nil
-		mw.deleteError = nil
-		mr.returnError = errors.New(errMsg)
-		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
-		body := rec.Body.String()
-		assert.Contains(t, body, errMsg)
-	})
-
-	t.Run("/__gtg bad can't delete", func(t *testing.T) {
-		errMsg := "S3 delete error"
-		mw.returnError = nil
-		mw.deleteError = errors.New(errMsg)
-		mr.returnError = nil
+	t.Run("/__gtg bad", func(t *testing.T) {
+		errMsg := "Head request to S3 failed"
+		s.s3error = errors.New("head failed")
 		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
 		body := rec.Body.String()
 		assert.Contains(t, body, errMsg)
