@@ -29,8 +29,8 @@
 			"path": "github.com/Financial-Times/message-queue-gonsumer/consumer",
 			"revision": "3a5511f4d1c63722f8eaf72aff5fe4d5733903b0",
 			"revisionTime": "2017-04-07T11:12:54Z",
-			"version": "=0.3.1-k8s-remove-host-routing-rc1",
-			"versionExact": "0.3.1-k8s-remove-host-routing-rc1"
+			"version": "=0.4.0",
+			"versionExact": "0.4.0"
 		},
 		{
 			"checksumSHA1": "IDKJ/mqVeFl91y07EpjO6Kbnwnc=",
