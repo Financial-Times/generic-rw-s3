@@ -11,7 +11,8 @@ image:
 resources:
   limits:
     memory: 512Mi
-bucketName: ""
+bucket:
+  key: "" # the global-config key to use to find the environment specific S3 bucket
 env: # the two instances of the generic-rw-s3 app use a different set of env vars
 # this section should contain the set of env vars specific to the instance of the app
   - name: var1

@@ -2,7 +2,8 @@
 replicaCount: 1
 service:
   name: concepts-rw-s3
-bucketName: com.ft.upp.normalised-source-concepts.k8s-pub
+bucket:
+  key: "concepts-rw-s3.bucket"
 env:
   - name: RESOURCE_PATH
     value: "concepts"

@@ -2,7 +2,8 @@
 replicaCount: 1
 service:
   name: generic-rw-s3
-bucketName: com.ft.upp.normalised-source-concepts.k8s-pub
+bucket:
+  key: "generic-rw-s3.bucket"
 env:
   - name: SRC_ADDR
     valueFrom:
