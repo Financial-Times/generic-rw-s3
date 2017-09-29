@@ -1,0 +1,21 @@
+# Default values for generic-rw-s3.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+service:
+  name: "" # The name of the service, should be defined in the specific app-configs folder.
+  hasHealthcheck: "true"
+replicaCount: 1
+image:
+  repository: coco/generic-rw-s3
+  pullPolicy: IfNotPresent
+resources:
+  limits:
+    memory: 512Mi
+bucket:
+  key: "" # the global-config key to use to find the environment specific S3 bucket
+env: # the two instances of the generic-rw-s3 app use a different set of env vars
+# this section should contain the set of env vars specific to the instance of the app
+  - name: var1
+    value: "val1"
+  - name: var2
+    value: "val2"

@@ -9,16 +9,16 @@ import (
 	"github.com/Financial-Times/base-ft-rw-app-go/baseftrwapp"
 	"github.com/Financial-Times/generic-rw-s3/service"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
-	log "github.com/Sirupsen/logrus"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
-	SpareWorkers = 10 // Workers for things like health check, gtg, count, etc...
+	spareWorkers = 10 // Workers for things like health check, gtg, count, etc...
 )
 
 func main() {
@@ -108,13 +108,6 @@ func main() {
 		EnvVar: "SRC_TOPIC",
 	})
 
-	sourceQueue := app.String(cli.StringOpt{
-		Name:   "source-queue",
-		Value:  "",
-		Desc:   "The queue to read the messages from",
-		EnvVar: "SRC_QUEUE",
-	})
-
 	sourceConcurrentProcessing := app.Bool(cli.BoolOpt{
 		Name:   "source-concurrent-processing",
 		Value:  false,
@@ -128,7 +121,6 @@ func main() {
 			Addrs:                *sourceAddresses,
 			Group:                *sourceGroup,
 			Topic:                *sourceTopic,
-			Queue:                *sourceQueue,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
@@ -148,9 +140,9 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			MaxIdleConns:          wrks + SpareWorkers,
+			MaxIdleConns:          wrks + spareWorkers,
 			IdleConnTimeout:       90 * time.Second,
-			MaxIdleConnsPerHost:   wrks + SpareWorkers,
+			MaxIdleConnsPerHost:   wrks + spareWorkers,
 			TLSHandshakeTimeout:   3 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
@@ -174,7 +166,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 
 	servicesRouter := mux.NewRouter()
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, w, r)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName)
 
 	qp := service.NewQProcessor(w)
 

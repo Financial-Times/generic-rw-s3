@@ -1,0 +1,9 @@
+# Values used for the deployed application.
+replicaCount: 1
+service:
+  name: concepts-rw-s3
+bucket:
+  key: "concepts-rw-s3.bucket"
+env:
+  - name: RESOURCE_PATH
+    value: "concepts"

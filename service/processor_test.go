@@ -5,14 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
-	transactionid "github.com/Financial-Times/transactionid-utils-go"
-	log "github.com/Sirupsen/logrus"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"math/rand"
 	"net/http/httptest"
@@ -20,6 +12,15 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	transactionid "github.com/Financial-Times/transactionid-utils-go"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -526,7 +527,7 @@ PAYLOAD9
 }
 
 func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
-	r, s := getReaderwithMultipleWorkers()
+	r, s := getReaderWithMultipleWorkers()
 	s.payload = "PAYLOAD"
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		{KeyCount: aws.Int64(1)},
@@ -694,7 +695,7 @@ func getReader() (Reader, *mockS3Client) {
 	return NewS3Reader(s, "testBucket", "test/prefix", 1), s
 }
 
-func getReaderwithMultipleWorkers() (Reader, *mockS3Client) {
+func getReaderWithMultipleWorkers() (Reader, *mockS3Client) {
 	s := &mockS3Client{}
 	return NewS3Reader(s, "testBucket", "test/prefix", 15), s
 }

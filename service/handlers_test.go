@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	status "github.com/Financial-Times/service-status-go/httphandlers"
-	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,10 +24,8 @@ const (
 
 func TestAddAdminHandlers(t *testing.T) {
 	s := &mockS3Client{}
-	mw := &mockWriter{}
-	mr := &mockReader{payload: "Something found"}
 	r := mux.NewRouter()
-	AddAdminHandlers(r, s, "bucketName", mw, mr)
+	AddAdminHandlers(r, s, "bucketName")
 
 	t.Run(status.PingPath, func(t *testing.T) {
 		assertRequestAndResponse(t, status.PingPath, 200, "pong")
@@ -54,7 +52,7 @@ func TestAddAdminHandlers(t *testing.T) {
 	})
 
 	t.Run("/__gtg good", func(t *testing.T) {
-		assertRequestAndResponse(t, "/__gtg", 200, "")
+		assertRequestAndResponse(t, "/__gtg", 200, "OK")
 	})
 
 	t.Run("/__health bad", func(t *testing.T) {
@@ -66,25 +64,12 @@ func TestAddAdminHandlers(t *testing.T) {
 		assert.Contains(t, body, "\"S3 Bucket check\",\"ok\":false")
 	})
 
-	t.Run("/_gtg bad can't write", func(t *testing.T) {
-		mw.returnError = errors.New("S3 write error")
-		mw.deleteError = nil
-		mr.returnError = nil
-		assertRequestAndResponse(t, "/__gtg", 503, "")
-	})
-
-	t.Run("/_gtg bad can't read", func(t *testing.T) {
-		mw.returnError = nil
-		mw.deleteError = nil
-		mr.returnError = errors.New("S3 read error")
-		assertRequestAndResponse(t, "/__gtg", 503, "")
-	})
-
-	t.Run("/_gtg bad can't delete", func(t *testing.T) {
-		mw.returnError = nil
-		mw.deleteError = errors.New("S3 delete error")
-		mr.returnError = nil
-		assertRequestAndResponse(t, "/__gtg", 503, "")
+	t.Run("/__gtg bad", func(t *testing.T) {
+		errMsg := "Head request to S3 failed"
+		s.s3error = errors.New("head failed")
+		rec := assertRequestAndResponse(t, "/__gtg", 503, "")
+		body := rec.Body.String()
+		assert.Contains(t, body, errMsg)
 	})
 }
 

@@ -8,13 +8,10 @@ An API for reading/writing generic payloads up to S3. It can be setup to read th
 
 ## Installation
 
-For the first time:
-
-`go get github.com/Financial-Times/generic-rw-s3`
-
-or update:
-
-`go get -u github.com/Financial-Times/generic-rw-s3`
+1. go get github.com/kardianos/govendor
+2. go get github.com/Financial-Times/generic-rw-s3
+3. cd $GOPATH/src/github.com/Financial-Times/generic-rw-s3
+4. govendor sync
 
 
 ## Running locally
@@ -48,7 +45,7 @@ export|set SRC_CONCURRENT_PROCESSING=true # Whether the consumer uses concurrent
 ```
 
 ### Run locally with read from kafka enabled
-`$GOPATH/bin/generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --source-addresses="<proyx_address>" --source-group="<consumer_group>" --source-topic="<topic_to_read>" --source-queue="kafka"`
+`$GOPATH/bin/generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --source-addresses="<proyx_address>" --source-group="<consumer_group>" --source-topic="<topic_to_read>"`
 
 ### Run locally with specified resource path
 `$GOPATH/bin/generic-rw-s3 --port=8080 --resourcePath="concepts" --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1"`
