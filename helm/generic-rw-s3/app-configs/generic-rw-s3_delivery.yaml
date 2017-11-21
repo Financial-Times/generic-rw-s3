@@ -4,6 +4,8 @@ service:
   name: generic-rw-s3
 bucket:
   key: "generic-rw-s3.bucket"
+  # We have a separate bucket in each region on the cluster
+  awsRegionKey: "aws.region"
 env:
   - name: SRC_ADDR
     valueFrom:

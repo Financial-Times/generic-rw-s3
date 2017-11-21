@@ -36,7 +36,7 @@ spec:
           valueFrom:
             configMapKeyRef:
               name: global-config
-              key: aws.region
+              key: {{ .Values.bucket.awsRegionKey }}
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
