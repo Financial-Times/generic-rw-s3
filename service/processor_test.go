@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	hashstructure "github.com/mitchellh/hashstructure"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,10 +35,11 @@ type mockS3Client struct {
 	s3iface.S3API
 	sync.Mutex
 	s3error              error
+	notFoundError        error
 	putObjectInput       *s3.PutObjectInput
 	headBucketInput      *s3.HeadBucketInput
 	headObjectInput      *s3.HeadObjectInput
-	headObjectOutput	 *s3.HeadObjectOutput
+	headObjectOutput     *s3.HeadObjectOutput
 	getObjectInput       *s3.GetObjectInput
 	deleteObjectInput    *s3.DeleteObjectInput
 	deleteObjectOutput   *s3.DeleteObjectOutput
@@ -69,7 +71,16 @@ func (m *mockS3Client) HeadObject(hoi *s3.HeadObjectInput) (*s3.HeadObjectOutput
 	defer m.Unlock()
 	log.Infof("Head params: %v", hoi)
 	m.headObjectInput = hoi
-	return m.headObjectOutput, m.s3error
+	var err error
+	if m.notFoundError != nil {
+		err = m.notFoundError
+	} else {
+		err = m.s3error
+	}
+	if m.headObjectOutput.Metadata == nil {
+		m.headObjectOutput.Metadata = make(map[string]*string)
+	}
+	return m.headObjectOutput, err
 }
 
 func (m *mockS3Client) DeleteObject(doi *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
@@ -182,7 +193,7 @@ func TestWritingToS3WithNoContentType(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
 	var err error
-	_, err = w.Write(expectedUUID, &p, "", expectedTransactionId, )
+	_, err = w.Write(expectedUUID, &p, "", expectedTransactionId)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -217,8 +228,41 @@ func TestWritingToS3WithOnlyUpdatesAllowed_Success(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", body)
 }
 
-func TestWritingToS3WithOnlyUpdatesAllowed_ObjectHasNoMetadata(t *testing.T) {
+func TestWritingToS3WithOnlyUpdatesAllowed_ObjectHasNoCurrentObjectHash(t *testing.T) {
 	w, s := getWriterOnlyUpdates("")
+	p := []byte("PAYLOAD")
+	ct := expectedContentType
+	var err error
+	_, err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, s.putObjectInput)
+	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
+	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
+	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
+
+	rs := s.putObjectInput.Body
+	assert.NotNil(t, rs)
+	ba, err := ioutil.ReadAll(rs)
+	assert.NoError(t, err)
+	body := string(ba[:])
+	assert.Equal(t, "PAYLOAD", body)
+}
+
+func TestWritingToS3WithOnlyUpdatesAllowed_NoObjectWrittenForObjectWithExistingHash(t *testing.T) {
+	var err error
+	p := []byte("PAYLOAD")
+	existingHash, err := hashstructure.Hash(&p, nil)
+	assert.NoError(t, err)
+	existingHashString := fmt.Sprint(existingHash)
+	w, s := getWriterOnlyUpdates(existingHashString)
+	ct := expectedContentType
+	_, err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	assert.NoError(t, err)
+	assert.Empty(t, s.putObjectInput)
+}
+
+func TestWritingToS3WithOnlyUpdatesAllowed_SuccessForNewObject(t *testing.T) {
+	w, s := getWriterNoExistingObject()
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
@@ -721,21 +765,30 @@ func getReaderNoPrefix() (Reader, *mockS3Client) {
 
 func getWriter() (Writer, *mockS3Client) {
 	s := &mockS3Client{}
+	s.headObjectOutput = &s3.HeadObjectOutput{}
 	return NewS3Writer(s, "testBucket", "test/prefix", false), s
 }
 
 func getWriterNoPrefix() (Writer, *mockS3Client) {
 	s := &mockS3Client{}
+	s.headObjectOutput = &s3.HeadObjectOutput{}
 	return NewS3Writer(s, "testBucket", "", true), s
 }
 
 func getWriterOnlyUpdates(currentHash string) (Writer, *mockS3Client) {
 	s := &mockS3Client{}
+	metadata := make(map[string]*string)
 	if currentHash != "" {
-		fmt.Printf("We got here first!\n")
-		metadata := make(map[string]*string)
 		metadata["Current-Object-Hash"] = &currentHash
-		s.headObjectOutput = &s3.HeadObjectOutput{Metadata: metadata}
 	}
+	s.headObjectOutput = &s3.HeadObjectOutput{Metadata: metadata}
+	return NewS3Writer(s, "testBucket", "test/prefix", true), s
+}
+
+func getWriterNoExistingObject() (Writer, *mockS3Client) {
+	s := &mockS3Client{}
+	s.headObjectOutput = &s3.HeadObjectOutput{}
+
+	s.notFoundError = awserr.New("NotFound", "Object not found", errors.New("some error"))
 	return NewS3Writer(s, "testBucket", "test/prefix", true), s
 }

@@ -111,8 +111,8 @@ func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 
 func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{}
-	mr := &mockReader{found: true}
+	mw := &mockWriter{exists: true}
+	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
@@ -121,7 +121,6 @@ func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	assert.Equal(t, 200, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
-	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mr.headUuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
 	assert.Equal(t, "{\"message\":\"UPDATED\"}", rec.Body.String())
 }
@@ -320,9 +319,7 @@ func newRequest(method, url string, body string) *http.Request {
 
 type mockReader struct {
 	sync.Mutex
-	found       bool
 	uuid        string
-	headUuid    string
 	payload     string
 	rc          io.ReadCloser
 	returnError error
@@ -346,13 +343,6 @@ func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	}
 
 	return r.payload != "" || r.rc != nil, body, &r.returnCT, r.returnError
-}
-
-func (r *mockReader) Head(uuid string) (bool, error) {
-	r.Lock()
-	defer r.Unlock()
-	r.headUuid = uuid
-	return r.found, r.returnError
 }
 
 func (r *mockReader) Count() (int64, error) {
@@ -389,7 +379,7 @@ type mockWriter struct {
 	ct          string
 	tid         string
 	writeCalled bool
-	exist       bool
+	exists      bool
 }
 
 func (mw *mockWriter) Delete(uuid string, tid string) error {
@@ -410,7 +400,7 @@ func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) (bool
 	mw.ct = ct
 	mw.tid = tid
 	mw.writeCalled = true
-	return mw.exist, mw.returnError
+	return mw.exists, mw.returnError
 }
 
 func withExpectedResourcePath(endpoint string) string {
