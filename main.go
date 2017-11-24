@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
-	log "github.com/sirupsen/logrus"
+	"github.com/Financial-Times/go-logger"
 )
 
 const (
@@ -23,6 +23,13 @@ const (
 
 func main() {
 	app := cli.App("generic-rw-s3", "A RESTful API for writing data to S3")
+
+	appName := app.String(cli.StringOpt{
+		Name:   "app-name",
+		Value:  "factset-uploader",
+		Desc:   "Application name",
+		EnvVar: "APP_NAME",
+	})
 
 	port := app.String(cli.StringOpt{
 		Name:   "port",
@@ -115,6 +122,13 @@ func main() {
 		EnvVar: "SRC_CONCURRENT_PROCESSING",
 	})
 
+	logLevel := app.String(cli.StringOpt{
+		Name:   "log-level",
+		Value:  "info",
+		Desc:   "Level of required logging",
+		EnvVar: "LOG_LEVEL",
+	})
+
 	onlyUpdatesEnabled := app.Bool(cli.BoolOpt{
 		Name:   "only-updates-enabled",
 		Value:  false,
@@ -134,8 +148,9 @@ func main() {
 
 		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled)
 	}
-	log.SetLevel(log.InfoLevel)
-	log.Infof("Application started with args %s", os.Args)
+
+	logger.InitLogger(*appName, *logLevel)
+	logger.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
@@ -161,7 +176,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 			HTTPClient: hc,
 		})
 	if err != nil {
-		log.Fatalf("Failed to create AWS session: %v", err)
+		logger.Fatalf("Failed to create AWS session: %v", err)
 	}
 	svc := s3.New(sess)
 
@@ -177,7 +192,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 
 	qp := service.NewQProcessor(w)
 
-	log.Infof("listening on %v", port)
+	logger.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
 		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
@@ -185,7 +200,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 		defer c.Stop()
 	}
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatalf("Unable to start server: %v", err)
+		logger.Fatalf("Unable to start server: %v", err)
 	}
 
 }

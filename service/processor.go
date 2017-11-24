@@ -326,16 +326,14 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, e
 		return exists, err
 	}
 	if w.onlyUpdatesEnabled {
-		if exists {
-			if newHash == 0 {
+		if exists && newHash == 0 {
 				logger.WithTransactionID(tid).WithUUID(uuid).Info("Object is identical to the stored record, skipping")
 				return exists, nil
-			} else {
-				hashAsString := strconv.FormatUint(newHash, 10)
-				params.Metadata["Current-Object-Metadata"] = &hashAsString
-			}
 		}
+		hashAsString := strconv.FormatUint(newHash, 10)
+		params.Metadata["current-object-metadata"] = &hashAsString
 	}
+
 	resp, err := w.svc.PutObject(params)
 	if err != nil {
 		logger.WithTransactionID(tid).WithUUID(uuid).Errorf("Error writing payload to s3, response was %v", resp)
@@ -369,7 +367,6 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (boo
 	metadataMap := hoo.Metadata
 	var currentHashString string
 
-	//TODO what if null?
 	if hash, ok := metadataMap["Current-Object-Hash"]; ok {
 		currentHashString = *hash
 	} else {
