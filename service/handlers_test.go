@@ -389,9 +389,10 @@ type mockWriter struct {
 	ct          string
 	tid         string
 	writeCalled bool
+	exist       bool
 }
 
-func (mw *mockWriter) Delete(uuid string) error {
+func (mw *mockWriter) Delete(uuid string, tid string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
@@ -401,7 +402,7 @@ func (mw *mockWriter) Delete(uuid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) error {
+func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) (bool, error) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
@@ -409,7 +410,7 @@ func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) error
 	mw.ct = ct
 	mw.tid = tid
 	mw.writeCalled = true
-	return mw.returnError
+	return mw.exist, mw.returnError
 }
 
 func withExpectedResourcePath(endpoint string) string {

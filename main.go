@@ -104,7 +104,7 @@ func main() {
 	sourceTopic := app.String(cli.StringOpt{
 		Name:   "source-topic",
 		Value:  "",
-		Desc:   "The topic to read the meassages from",
+		Desc:   "The topic to read the messages from",
 		EnvVar: "SRC_TOPIC",
 	})
 
@@ -113,6 +113,13 @@ func main() {
 		Value:  false,
 		Desc:   "Whether the consumer uses concurrent processing for the messages",
 		EnvVar: "SRC_CONCURRENT_PROCESSING",
+	})
+
+	onlyUpdatesEnabled := app.Bool(cli.BoolOpt{
+		Name:   "only-updates-enabled",
+		Value:  false,
+		Desc:   "Whether the consumer uses concurrent processing for the messages",
+		EnvVar: "ONLY_UPDATES_ENABLED",
 	})
 
 	app.Action = func() {
@@ -125,14 +132,14 @@ func main() {
 		}
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
 
-		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
+		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled)
 	}
 	log.SetLevel(log.InfoLevel)
 	log.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
+func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -158,7 +165,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 	}
 	svc := s3.New(sess)
 
-	w := service.NewS3Writer(svc, bucketName, bucketPrefix)
+	w := service.NewS3Writer(svc, bucketName, bucketPrefix, onlyUpdatesEnabled)
 	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks))
 
 	wh := service.NewWriterHandler(w, r)
