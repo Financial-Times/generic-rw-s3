@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/mitchellh/hashstructure"
+	"fmt"
 )
 
 type QProcessor interface {
@@ -334,6 +335,8 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, e
 		params.Metadata["current-object-metadata"] = &hashAsString
 	}
 
+	fmt.Printf("New params are %v\n", params)
+
 	resp, err := w.svc.PutObject(params)
 	if err != nil {
 		logger.WithTransactionID(tid).WithUUID(uuid).Errorf("Error writing payload to s3, response was %v", resp)
@@ -345,6 +348,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, e
 func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (bool, uint64, error) {
 	var found bool
 	objectHash, err := hashstructure.Hash(&b, nil)
+	fmt.Printf("Payload has hash of %d\n", objectHash)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error whilst hashing payload: %v", &b)
 		return found, 0, err
@@ -363,17 +367,21 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (boo
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error retrieving object metadata")
 		return false, 0, err
 	}
+	fmt.Printf("Head object output metadata is: %v\n", hoo.Metadata)
 
 	metadataMap := hoo.Metadata
 	var currentHashString string
 
 	if hash, ok := metadataMap["Current-Object-Hash"]; ok {
+		fmt.Print("We read the metadata for the hash value!\n")
 		currentHashString = *hash
 	} else {
+		fmt.Print("We did not read the metadata!\n")
 		currentHashString = "0"
 	}
 
 	currentHash, err := strconv.ParseUint(currentHashString, 10, 64)
+	fmt.Printf("Current has is %d\n", objectHash)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Error whilst parsing current hash")
 		return false, 0, err
