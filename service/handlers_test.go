@@ -95,7 +95,7 @@ func TestRequestUrlDoesNotMatchResourcePathShouldHaveNotFoundResponse(t *testing
 
 func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{}
+	mw := &mockWriter{writeCalled: true}
 	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
@@ -106,12 +106,12 @@ func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
-	assert.Equal(t, "{\"message\":\"CREATED\"}", rec.Body.String())
+	assert.Equal(t, "{\"message\":\"Created concept record in store\"}", rec.Body.String())
 }
 
 func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{exists: true}
+	mw := &mockWriter{exists: true, writeCalled: true}
 	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
@@ -122,7 +122,23 @@ func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
-	assert.Equal(t, "{\"message\":\"UPDATED\"}", rec.Body.String())
+	assert.Equal(t, "{\"message\":\"Updated concept record in store\"}", rec.Body.String())
+}
+
+func TestWriteHandlerAlreadyExistsReturnsNoContent(t *testing.T) {
+	r := mux.NewRouter()
+	mw := &mockWriter{exists: true, writeCalled: false}
+	mr := &mockReader{}
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
+
+	assert.Equal(t, 204, rec.Code)
+	assert.Equal(t, "PAYLOAD", mw.payload)
+	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
+	assert.Equal(t, ExpectedContentType, mw.ct)
+	assert.Equal(t, "{\"message\":\"Concept was already up-to-date\"}", rec.Body.String())
 }
 
 func TestWriterHandlerFailReadingBody(t *testing.T) {
@@ -392,15 +408,14 @@ func (mw *mockWriter) Delete(uuid string, tid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) (bool, error) {
+func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) (bool, bool, error) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
 	mw.payload = string((*b)[:])
 	mw.ct = ct
 	mw.tid = tid
-	mw.writeCalled = true
-	return mw.exists, mw.returnError
+	return mw.exists, mw.writeCalled, mw.returnError
 }
 
 func withExpectedResourcePath(endpoint string) string {

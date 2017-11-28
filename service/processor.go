@@ -18,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/mitchellh/hashstructure"
-	"fmt"
 )
 
 type QProcessor interface {
@@ -59,10 +58,13 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	if _, err := r.Write(uuid, &b, ct, tid); err != nil {
+	//Double logging
+	if _, wasUpdated, err := r.Write(uuid, &b, ct, tid); err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Failed to write")
+	} else if wasUpdated == false {
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
 	} else {
-		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Info("Wrote successfully")
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Wrote payload to s3 successfully")
 	}
 }
 
@@ -268,7 +270,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string, transactionId string) (bool, error)
+	Write(uuid string, b *[]byte, contentType string, transactionId string) (bool, bool, error)
 	Delete(uuid string, transactionId string) error
 }
 
@@ -276,7 +278,7 @@ type S3Writer struct {
 	svc                s3iface.S3API
 	bucketName         string
 	bucketPrefix       string
-	onlyUpdatesEnabled bool
+	OnlyUpdatesEnabled bool
 }
 
 func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string, onlyUpdatesEnabled bool) Writer {
@@ -284,7 +286,7 @@ func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string, only
 		svc:                svc,
 		bucketName:         bucketName,
 		bucketPrefix:       bucketPrefix,
-		onlyUpdatesEnabled: onlyUpdatesEnabled,
+		OnlyUpdatesEnabled: onlyUpdatesEnabled,
 	}
 }
 
@@ -305,7 +307,7 @@ func (w *S3Writer) Delete(uuid string, tid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, error) {
+func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, bool, error) {
 	var exists bool
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
@@ -324,31 +326,28 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, e
 
 	exists, newHash, err := w.compareObjectToStore(uuid, b, tid)
 	if err != nil {
-		return exists, err
+		return exists, false, err
 	}
-	if w.onlyUpdatesEnabled {
+	if w.OnlyUpdatesEnabled {
 		if exists && newHash == 0 {
-				logger.WithTransactionID(tid).WithUUID(uuid).Info("Object is identical to the stored record, skipping")
-				return exists, nil
+			logger.WithTransactionID(tid).WithUUID(uuid).Info("Object is identical to the stored record, skipping")
+			return exists, false, nil
 		}
 		hashAsString := strconv.FormatUint(newHash, 10)
 		params.Metadata["Current-Object-Hash"] = &hashAsString
 	}
 
-	fmt.Printf("New params are %v\n", params)
-
 	resp, err := w.svc.PutObject(params)
 	if err != nil {
 		logger.WithTransactionID(tid).WithUUID(uuid).Errorf("Error writing payload to s3, response was %v", resp)
-		return exists, err
+		return exists, false, err
 	}
-	return exists, nil
+	return exists, true, nil
 }
 
 func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (bool, uint64, error) {
 	var found bool
 	objectHash, err := hashstructure.Hash(&b, nil)
-	fmt.Printf("Payload has hash of %d\n", objectHash)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error whilst hashing payload: %v", &b)
 		return found, 0, err
@@ -367,21 +366,17 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (boo
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error retrieving object metadata")
 		return false, 0, err
 	}
-	fmt.Printf("Head object output metadata is: %v\n", hoo.Metadata)
 
 	metadataMap := hoo.Metadata
 	var currentHashString string
 
 	if hash, ok := metadataMap["Current-Object-Hash"]; ok {
-		fmt.Print("We read the metadata for the hash value!\n")
 		currentHashString = *hash
 	} else {
-		fmt.Print("We did not read the metadata!\n")
 		currentHashString = "0"
 	}
 
 	currentHash, err := strconv.ParseUint(currentHashString, 10, 64)
-	fmt.Printf("Current has is %d\n", objectHash)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Error whilst parsing current hash")
 		return false, 0, err
@@ -419,18 +414,23 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	ct := r.Header.Get("Content-Type")
-	exists, err = w.writer.Write(uuid, &bs, ct, tid)
+	exists, updated, err := w.writer.Write(uuid, &bs, ct, tid)
 	if err != nil {
 		writerServiceUnavailable(uuid, err, rw, tid)
 		return
 	}
 
 	if exists {
-		rw.WriteHeader(http.StatusOK)
-		rw.Write([]byte("{\"message\":\"UPDATED\"}"))
+		if updated {
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("{\"message\":\"Updated concept record in store\"}"))
+		} else {
+			rw.WriteHeader(http.StatusNoContent)
+			rw.Write([]byte("{\"message\":\"Concept was already up-to-date\"}"))
+		}
 	} else {
 		rw.WriteHeader(http.StatusCreated)
-		rw.Write([]byte("{\"message\":\"CREATED\"}"))
+		rw.Write([]byte("{\"message\":\"Created concept record in store\"}"))
 	}
 }
 
