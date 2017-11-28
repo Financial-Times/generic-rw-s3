@@ -332,7 +332,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, e
 				return exists, nil
 		}
 		hashAsString := strconv.FormatUint(newHash, 10)
-		params.Metadata["current-object-metadata"] = &hashAsString
+		params.Metadata["Current-Object-Hash"] = &hashAsString
 	}
 
 	fmt.Printf("New params are %v\n", params)
