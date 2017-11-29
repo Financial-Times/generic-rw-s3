@@ -58,7 +58,6 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	//Double logging
 	if _, wasUpdated, err := r.Write(uuid, &b, ct, tid); err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Failed to write")
 	} else if wasUpdated == false {
@@ -330,7 +329,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, b
 	}
 	if w.OnlyUpdatesEnabled {
 		if exists && newHash == 0 {
-			logger.WithTransactionID(tid).WithUUID(uuid).Info("Object is identical to the stored record, skipping")
+			logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept is identical to the stored record, skipping")
 			return exists, false, nil
 		}
 		hashAsString := strconv.FormatUint(newHash, 10)
@@ -342,6 +341,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, b
 		logger.WithTransactionID(tid).WithUUID(uuid).Errorf("Error writing payload to s3, response was %v", resp)
 		return exists, false, err
 	}
+	logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept written to s3")
 	return exists, true, nil
 }
 
@@ -381,8 +381,10 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (boo
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Error whilst parsing current hash")
 		return false, 0, err
 	}
+	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v", objectHash)
+	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v", currentHash)
 	if objectHash != currentHash {
-		logger.WithTransactionID(tid).WithUUID(uuid).Info("Object is different to the stored record")
+		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
 		return true, objectHash, nil
 	}
 	return true, 0, nil
