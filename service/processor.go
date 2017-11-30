@@ -76,7 +76,6 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 
 	switch writeStatus {
 	case UNCHANGED:
-		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
 		return
 	case UPDATED:
 		logger.WithTransactionID(tid).WithUUID(uuid).Info("Updated concept record in s3 successfully")
@@ -349,7 +348,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (status,
 	if err != nil {
 		return status, err
 	} else if w.OnlyUpdatesEnabled && status == UNCHANGED {
-		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is identical to the stored record, skipping")
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
 		return status, nil
 	}
 
@@ -402,7 +401,7 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v", objectHash)
 	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v", currentHash)
 	if objectHash != currentHash {
-		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept is different to the stored record")
 		return UPDATED, objectHash, nil
 	}
 	return UNCHANGED, 0, nil
@@ -437,7 +436,7 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	switch writeStatus {
 	case INTERNAL_ERROR:
 		rw.WriteHeader(http.StatusInternalServerError)
-		rw.Write([]byte("{\"message\":\"An error occured whilst processing request\"}"))
+		rw.Write([]byte("{\"message\":\"An error occurred whilst processing request\"}"))
 		return
 	case SERVICE_UNAVAILABLE:
 		rw.WriteHeader(http.StatusServiceUnavailable)
@@ -445,7 +444,6 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		return
 	case UNCHANGED:
 		rw.WriteHeader(http.StatusNoContent)
-		rw.Write([]byte("{\"message\":\"Concept was already up-to-date\"}"))
 		return
 	case UPDATED:
 		rw.WriteHeader(http.StatusOK)
