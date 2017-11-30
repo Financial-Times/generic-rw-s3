@@ -35,6 +35,16 @@ type KafkaMsg struct {
 	Id string `json:"uuid"`
 }
 
+type status int
+
+const (
+	UNCHANGED status = iota
+	CREATED
+	UPDATED
+	INTERNAL_ERROR
+	SERVICE_UNAVAILABLE
+)
+
 func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var uuid string
 	var ct string
@@ -50,7 +60,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 	var km KafkaMsg
 	b := []byte(m.Body)
 	if err := json.Unmarshal(b, &km); err != nil {
-		logger.WithError(err).WithTransactionID(tid).WithField("message_id", m.Headers["Message-Id"]).Error("Could not unmarshal message")
+		logger.WithError(err).WithTransactionID(tid).WithField("message_id", m.Headers["Message-Id"]).Errorf("Could not unmarshal message: %v", b)
 		return
 	}
 
@@ -58,12 +68,25 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	if _, wasUpdated, err := r.Write(uuid, &b, ct, tid); err != nil {
+	writeStatus, err := r.Write(uuid, &b, ct, tid)
+	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Failed to write")
-	} else if wasUpdated == false {
+		return
+	}
+
+	switch writeStatus {
+	case UNCHANGED:
 		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
-	} else {
-		logger.WithTransactionID(tid).WithUUID(uuid).Info("Wrote payload to s3 successfully")
+		return
+	case UPDATED:
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Updated concept record in s3 successfully")
+		return
+	case CREATED:
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Created concept record in s3 successfully")
+		return
+	default:
+		logger.WithTransactionID(tid).WithUUID(uuid).Error("Unhandled error occured!")
+		return
 	}
 }
 
@@ -269,7 +292,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string, transactionId string) (bool, bool, error)
+	Write(uuid string, b *[]byte, contentType string, transactionId string) (status, error)
 	Delete(uuid string, transactionId string) error
 }
 
@@ -306,8 +329,7 @@ func (w *S3Writer) Delete(uuid string, tid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, bool, error) {
-	var exists bool
+func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (status, error) {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
 		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
@@ -323,34 +345,30 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (bool, b
 	}
 	params.Metadata[transactionid.TransactionIDKey] = &tid
 
-	exists, newHash, err := w.compareObjectToStore(uuid, b, tid)
+	status, newHash, err := w.compareObjectToStore(uuid, b, tid)
 	if err != nil {
-		return exists, false, err
+		return status, err
+	} else if w.OnlyUpdatesEnabled && status == UNCHANGED {
+		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is identical to the stored record, skipping")
+		return status, nil
 	}
-	if w.OnlyUpdatesEnabled {
-		if exists && newHash == 0 {
-			logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept is identical to the stored record, skipping")
-			return exists, false, nil
-		}
-		hashAsString := strconv.FormatUint(newHash, 10)
-		params.Metadata["Current-Object-Hash"] = &hashAsString
-	}
+
+	hashAsString := strconv.FormatUint(newHash, 10)
+	params.Metadata["Current-Object-Hash"] = &hashAsString
 
 	resp, err := w.svc.PutObject(params)
 	if err != nil {
-		logger.WithTransactionID(tid).WithUUID(uuid).Errorf("Error writing payload to s3, response was %v", resp)
-		return exists, false, err
+		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error writing payload to s3, response was %v", resp)
+		return SERVICE_UNAVAILABLE, err
 	}
-	logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept written to s3")
-	return exists, true, nil
+	return status, nil
 }
 
-func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (bool, uint64, error) {
-	var found bool
+func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (status, uint64, error) {
 	objectHash, err := hashstructure.Hash(&b, nil)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error whilst hashing payload: %v", &b)
-		return found, 0, err
+		return INTERNAL_ERROR, 0, err
 	}
 
 	hoi := &s3.HeadObjectInput{
@@ -361,10 +379,10 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (boo
 	if err != nil {
 		e, ok := err.(awserr.Error)
 		if ok && e.Code() == "NotFound" {
-			return false, 0, nil
+			return CREATED, 0, nil
 		}
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error retrieving object metadata")
-		return false, 0, err
+		return SERVICE_UNAVAILABLE, 0, err
 	}
 
 	metadataMap := hoo.Metadata
@@ -379,15 +397,15 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (boo
 	currentHash, err := strconv.ParseUint(currentHashString, 10, 64)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Error whilst parsing current hash")
-		return false, 0, err
+		return INTERNAL_ERROR, 0, err
 	}
 	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v", objectHash)
 	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v", currentHash)
 	if objectHash != currentHash {
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
-		return true, objectHash, nil
+		return UPDATED, objectHash, nil
 	}
-	return true, 0, nil
+	return UNCHANGED, 0, nil
 }
 
 type WriterHandler struct {
@@ -407,32 +425,40 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	uuid := uuid(r.URL.Path)
 	rw.Header().Set("Content-Type", "application/json")
 	var err error
-	var exists bool
 	bs, err := ioutil.ReadAll(r.Body)
-
 	if err != nil {
 		writerStatusInternalServerError(uuid, err, rw, tid)
 		return
 	}
 
 	ct := r.Header.Get("Content-Type")
-	exists, updated, err := w.writer.Write(uuid, &bs, ct, tid)
-	if err != nil {
-		writerServiceUnavailable(uuid, err, rw, tid)
-		return
-	}
+	writeStatus, _ := w.writer.Write(uuid, &bs, ct, tid)
 
-	if exists {
-		if updated {
-			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("{\"message\":\"Updated concept record in store\"}"))
-		} else {
-			rw.WriteHeader(http.StatusNoContent)
-			rw.Write([]byte("{\"message\":\"Concept was already up-to-date\"}"))
-		}
-	} else {
+	switch writeStatus {
+	case INTERNAL_ERROR:
+		rw.WriteHeader(http.StatusInternalServerError)
+		rw.Write([]byte("{\"message\":\"An error occured whilst processing request\"}"))
+		return
+	case SERVICE_UNAVAILABLE:
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		rw.Write([]byte("{\"message\":\"Downstream service responded with error\"}"))
+		return
+	case UNCHANGED:
+		rw.WriteHeader(http.StatusNoContent)
+		rw.Write([]byte("{\"message\":\"Concept was already up-to-date\"}"))
+		return
+	case UPDATED:
+		rw.WriteHeader(http.StatusOK)
+		rw.Write([]byte("{\"message\":\"Updated concept record in store\"}"))
+		return
+	case CREATED:
 		rw.WriteHeader(http.StatusCreated)
 		rw.Write([]byte("{\"message\":\"Created concept record in store\"}"))
+		return
+	default:
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		rw.Write([]byte("{\"message\":\"Unhandled error occurred\"}"))
+		return
 	}
 }
 
@@ -487,6 +513,7 @@ func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 	logger.WithTransactionID(tid).Infof("Got a count back of '%v'", i)
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
+
 	b := []byte{}
 	b = strconv.AppendInt(b, i, 10)
 	rw.Write(b)

@@ -26,7 +26,6 @@ func main() {
 
 	appName := app.String(cli.StringOpt{
 		Name:   "app-name",
-		Value:  "factset-uploader",
 		Desc:   "Application name",
 		EnvVar: "APP_NAME",
 	})
@@ -132,7 +131,7 @@ func main() {
 	onlyUpdatesEnabled := app.Bool(cli.BoolOpt{
 		Name:   "only-updates-enabled",
 		Value:  false,
-		Desc:   "Whether the consumer uses concurrent processing for the messages",
+		Desc:   "When enabled app will only write to s3 when concept has changed since last write",
 		EnvVar: "ONLY_UPDATES_ENABLED",
 	})
 
@@ -146,7 +145,7 @@ func main() {
 		}
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
 
-		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled)
+		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled)
 	}
 
 	logger.InitLogger(*appName, *logLevel)
@@ -154,7 +153,7 @@ func main() {
 	app.Run(os.Args)
 }
 
-func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool) {
+func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -188,7 +187,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 
 	servicesRouter := mux.NewRouter()
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
-	service.AddAdminHandlers(servicesRouter, svc, bucketName)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName)
 
 	qp := service.NewQProcessor(w)
 

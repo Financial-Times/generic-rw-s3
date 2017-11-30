@@ -7,7 +7,7 @@ import (
 	"github.com/Financial-Times/go-fthealth/v1a"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/service-status-go/gtg"
-	status "github.com/Financial-Times/service-status-go/httphandlers"
+	httpStatus "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -17,27 +17,27 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string) {
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string) {
 	c := checker{svc, bucketName}
 	var monitoringRouter http.Handler = servicesRouter
 	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
 	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
-	http.HandleFunc(status.PingPath, status.PingHandler)
-	http.HandleFunc(status.PingPathDW, status.PingHandler)
-	http.HandleFunc(status.BuildInfoPath, status.BuildInfoHandler)
-	http.HandleFunc(status.BuildInfoPathDW, status.BuildInfoHandler)
+	http.HandleFunc(httpStatus.PingPath, httpStatus.PingHandler)
+	http.HandleFunc(httpStatus.PingPathDW, httpStatus.PingHandler)
+	http.HandleFunc(httpStatus.BuildInfoPath, httpStatus.BuildInfoHandler)
+	http.HandleFunc(httpStatus.BuildInfoPathDW, httpStatus.BuildInfoHandler)
 	http.HandleFunc("/__health", v1a.Handler("GenericReadWriteS3 Healthchecks",
 		"Runs a HEAD check on bucket", v1a.Check{
 			BusinessImpact:   "Unable to access S3 bucket",
 			Name:             "S3 Bucket check",
-			PanicGuide:       "http://ft.com",
+			PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-", appName),
 			Severity:         1,
 			TechnicalSummary: `Can not access S3 bucket.`,
 			Checker:          c.healthCheck,
 		}))
 
-	gtgHandler := status.NewGoodToGoHandler(c.gtgCheckHandler)
-	http.HandleFunc(status.GTGPath, gtgHandler)
+	gtgHandler := httpStatus.NewGoodToGoHandler(c.gtgCheckHandler)
+	http.HandleFunc(httpStatus.GTGPath, gtgHandler)
 	http.Handle("/", monitoringRouter)
 }
 
