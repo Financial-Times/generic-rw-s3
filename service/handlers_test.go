@@ -138,7 +138,7 @@ func TestWriteHandlerAlreadyExistsReturnsNoContent(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
-	assert.Equal(t, "{\"message\":\"Concept was already up-to-date\"}", rec.Body.String())
+	assert.Equal(t, "", rec.Body.String())
 }
 
 func TestWriterHandlerFailReadingBody(t *testing.T) {

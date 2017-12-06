@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/aws/aws-sdk-go/aws"
@@ -128,6 +129,10 @@ func (m *mockS3Client) ListObjectsV2Pages(loi *s3.ListObjectsV2Input, fn func(p 
 	}
 
 	return m.s3error
+}
+
+func init() {
+	logger.InitLogger("test-generic-rw-s3", "debug")
 }
 
 func TestWritingToS3(t *testing.T) {
