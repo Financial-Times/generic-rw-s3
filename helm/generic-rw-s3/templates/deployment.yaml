@@ -54,6 +54,8 @@ spec:
               key: {{ .Values.bucket.key }}
         - name: LOG_METRICS
           value: "false"
+        - name: ONLY_UPDATES_ENABLED
+          value: "true"
 {{ toYaml .Values.env | indent 8 }}
         ports:
         - containerPort: 8080
