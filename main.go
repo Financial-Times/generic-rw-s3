@@ -8,13 +8,13 @@ import (
 
 	"github.com/Financial-Times/base-ft-rw-app-go/baseftrwapp"
 	"github.com/Financial-Times/generic-rw-s3/service"
+	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -23,6 +23,12 @@ const (
 
 func main() {
 	app := cli.App("generic-rw-s3", "A RESTful API for writing data to S3")
+
+	appName := app.String(cli.StringOpt{
+		Name:   "app-name",
+		Desc:   "Application name",
+		EnvVar: "APP_NAME",
+	})
 
 	port := app.String(cli.StringOpt{
 		Name:   "port",
@@ -104,7 +110,7 @@ func main() {
 	sourceTopic := app.String(cli.StringOpt{
 		Name:   "source-topic",
 		Value:  "",
-		Desc:   "The topic to read the meassages from",
+		Desc:   "The topic to read the messages from",
 		EnvVar: "SRC_TOPIC",
 	})
 
@@ -113,6 +119,20 @@ func main() {
 		Value:  false,
 		Desc:   "Whether the consumer uses concurrent processing for the messages",
 		EnvVar: "SRC_CONCURRENT_PROCESSING",
+	})
+
+	logLevel := app.String(cli.StringOpt{
+		Name:   "log-level",
+		Value:  "info",
+		Desc:   "Level of required logging",
+		EnvVar: "LOG_LEVEL",
+	})
+
+	onlyUpdatesEnabled := app.Bool(cli.BoolOpt{
+		Name:   "only-updates-enabled",
+		Value:  false,
+		Desc:   "When enabled app will only write to s3 when concept has changed since last write",
+		EnvVar: "ONLY_UPDATES_ENABLED",
 	})
 
 	app.Action = func() {
@@ -125,14 +145,15 @@ func main() {
 		}
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
 
-		runServer(*port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf)
+		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled)
 	}
-	log.SetLevel(log.InfoLevel)
-	log.Infof("Application started with args %s", os.Args)
+
+	logger.InitLogger(*appName, *logLevel)
+	logger.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig) {
+func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -154,11 +175,11 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 			HTTPClient: hc,
 		})
 	if err != nil {
-		log.Fatalf("Failed to create AWS session: %v", err)
+		logger.Fatalf("Failed to create AWS session: %v", err)
 	}
 	svc := s3.New(sess)
 
-	w := service.NewS3Writer(svc, bucketName, bucketPrefix)
+	w := service.NewS3Writer(svc, bucketName, bucketPrefix, onlyUpdatesEnabled)
 	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks))
 
 	wh := service.NewWriterHandler(w, r)
@@ -166,11 +187,11 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 
 	servicesRouter := mux.NewRouter()
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
-	service.AddAdminHandlers(servicesRouter, svc, bucketName)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName)
 
 	qp := service.NewQProcessor(w)
 
-	log.Infof("listening on %v", port)
+	logger.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
 		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
@@ -178,7 +199,7 @@ func runServer(port string, resourcePath string, awsRegion string, bucketName st
 		defer c.Stop()
 	}
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatalf("Unable to start server: %v", err)
+		logger.Fatalf("Unable to start server: %v", err)
 	}
 
 }

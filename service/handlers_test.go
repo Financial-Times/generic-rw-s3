@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	status "github.com/Financial-Times/service-status-go/httphandlers"
+	httpStatus "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -25,22 +25,22 @@ const (
 func TestAddAdminHandlers(t *testing.T) {
 	s := &mockS3Client{}
 	r := mux.NewRouter()
-	AddAdminHandlers(r, s, "bucketName")
+	AddAdminHandlers(r, s, "bucketName", "generic-rw-s3")
 
-	t.Run(status.PingPath, func(t *testing.T) {
-		assertRequestAndResponse(t, status.PingPath, 200, "pong")
+	t.Run(httpStatus.PingPath, func(t *testing.T) {
+		assertRequestAndResponse(t, httpStatus.PingPath, 200, "pong")
 	})
 
-	t.Run(status.PingPathDW, func(t *testing.T) {
-		assertRequestAndResponse(t, status.PingPathDW, 200, "pong")
+	t.Run(httpStatus.PingPathDW, func(t *testing.T) {
+		assertRequestAndResponse(t, httpStatus.PingPathDW, 200, "pong")
 	})
 
-	t.Run(status.BuildInfoPath, func(t *testing.T) {
-		assertRequestAndResponse(t, status.BuildInfoPath, 200, "")
+	t.Run(httpStatus.BuildInfoPath, func(t *testing.T) {
+		assertRequestAndResponse(t, httpStatus.BuildInfoPath, 200, "")
 	})
 
-	t.Run(status.BuildInfoPathDW, func(t *testing.T) {
-		assertRequestAndResponse(t, status.BuildInfoPathDW, 200, "")
+	t.Run(httpStatus.BuildInfoPathDW, func(t *testing.T) {
+		assertRequestAndResponse(t, httpStatus.BuildInfoPathDW, 200, "")
 	})
 
 	t.Run("/__health good", func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestAddAdminHandlers(t *testing.T) {
 
 func TestRequestUrlMatchesResourcePathShouldHaveSuccessfulResponse(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{}
+	mw := &mockWriter{writeStatus: CREATED}
 	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, "")
 	rec := httptest.NewRecorder()
@@ -95,7 +95,7 @@ func TestRequestUrlDoesNotMatchResourcePathShouldHaveNotFoundResponse(t *testing
 
 func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{}
+	mw := &mockWriter{writeStatus: CREATED}
 	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
@@ -106,13 +106,13 @@ func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
-	assert.Equal(t, "{\"message\":\"CREATED\"}", rec.Body.String())
+	assert.Equal(t, "{\"message\":\"Created concept record in store\"}", rec.Body.String())
 }
 
 func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{}
-	mr := &mockReader{found: true}
+	mw := &mockWriter{writeStatus: UPDATED}
+	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
@@ -121,9 +121,24 @@ func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	assert.Equal(t, 200, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
-	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mr.headUuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)
-	assert.Equal(t, "{\"message\":\"UPDATED\"}", rec.Body.String())
+	assert.Equal(t, "{\"message\":\"Updated concept record in store\"}", rec.Body.String())
+}
+
+func TestWriteHandlerAlreadyExistsReturnsNotModified(t *testing.T) {
+	r := mux.NewRouter()
+	mw := &mockWriter{writeStatus: UNCHANGED}
+	mr := &mockReader{}
+	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
+
+	assert.Equal(t, 304, rec.Code)
+	assert.Equal(t, "PAYLOAD", mw.payload)
+	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
+	assert.Equal(t, ExpectedContentType, mw.ct)
+	assert.Equal(t, "", rec.Body.String())
 }
 
 func TestWriterHandlerFailReadingBody(t *testing.T) {
@@ -140,14 +155,14 @@ func TestWriterHandlerFailReadingBody(t *testing.T) {
 
 func TestWriterHandlerFailWrite(t *testing.T) {
 	r := mux.NewRouter()
-	mw := &mockWriter{returnError: errors.New("error writing")}
+	mw := &mockWriter{returnError: errors.New("error writing"), writeStatus: SERVICE_UNAVAILABLE}
 	mr := &mockReader{}
 	Handlers(r, NewWriterHandler(mw, mr), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD"))
 	assert.Equal(t, 503, rec.Code)
-	assert.Equal(t, "{\"message\":\"Service currently unavailable\"}", rec.Body.String())
+	assert.Equal(t, "{\"message\":\"Downstream service responded with error\"}", rec.Body.String())
 }
 
 func TestWriterHandlerDeleteReturnsOK(t *testing.T) {
@@ -320,9 +335,7 @@ func newRequest(method, url string, body string) *http.Request {
 
 type mockReader struct {
 	sync.Mutex
-	found       bool
 	uuid        string
-	headUuid    string
 	payload     string
 	rc          io.ReadCloser
 	returnError error
@@ -346,13 +359,6 @@ func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	}
 
 	return r.payload != "" || r.rc != nil, body, &r.returnCT, r.returnError
-}
-
-func (r *mockReader) Head(uuid string) (bool, error) {
-	r.Lock()
-	defer r.Unlock()
-	r.headUuid = uuid
-	return r.found, r.returnError
 }
 
 func (r *mockReader) Count() (int64, error) {
@@ -388,10 +394,10 @@ type mockWriter struct {
 	deleteError error
 	ct          string
 	tid         string
-	writeCalled bool
+	writeStatus status
 }
 
-func (mw *mockWriter) Delete(uuid string) error {
+func (mw *mockWriter) Delete(uuid string, tid string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
@@ -401,15 +407,14 @@ func (mw *mockWriter) Delete(uuid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) error {
+func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) (status, error) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
 	mw.payload = string((*b)[:])
 	mw.ct = ct
 	mw.tid = tid
-	mw.writeCalled = true
-	return mw.returnError
+	return mw.writeStatus, mw.returnError
 }
 
 func withExpectedResourcePath(endpoint string) string {

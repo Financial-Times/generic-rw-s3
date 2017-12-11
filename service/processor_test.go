@@ -13,12 +13,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/mitchellh/hashstructure"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,9 +36,11 @@ type mockS3Client struct {
 	s3iface.S3API
 	sync.Mutex
 	s3error              error
+	notFoundError        error
 	putObjectInput       *s3.PutObjectInput
 	headBucketInput      *s3.HeadBucketInput
 	headObjectInput      *s3.HeadObjectInput
+	headObjectOutput     *s3.HeadObjectOutput
 	getObjectInput       *s3.GetObjectInput
 	deleteObjectInput    *s3.DeleteObjectInput
 	deleteObjectOutput   *s3.DeleteObjectOutput
@@ -68,9 +72,18 @@ func (m *mockS3Client) HeadObject(hoi *s3.HeadObjectInput) (*s3.HeadObjectOutput
 	defer m.Unlock()
 	log.Infof("Head params: %v", hoi)
 	m.headObjectInput = hoi
-	return nil, m.s3error
-
+	var err error
+	if m.notFoundError != nil {
+		err = m.notFoundError
+	} else {
+		err = m.s3error
+	}
+	if m.headObjectOutput.Metadata == nil {
+		m.headObjectOutput.Metadata = make(map[string]*string)
+	}
+	return m.headObjectOutput, err
 }
+
 func (m *mockS3Client) DeleteObject(doi *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
@@ -118,12 +131,16 @@ func (m *mockS3Client) ListObjectsV2Pages(loi *s3.ListObjectsV2Input, fn func(p 
 	return m.s3error
 }
 
+func init() {
+	logger.InitLogger("test-generic-rw-s3", "debug")
+}
+
 func TestWritingToS3(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	_, err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -152,7 +169,7 @@ func TestWritingToS3WithTransactionID(t *testing.T) {
 
 	w, s := getWriter()
 
-	err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
 
 	assert.NoError(t, err)
 	assert.Equal(t, expectedTransactionId, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
@@ -171,7 +188,7 @@ func TestWritingToS3WithNewTransactionID(t *testing.T) {
 
 	w, s := getWriter()
 
-	err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
 
 	assert.NoError(t, err)
 	assert.Equal(t, mw.tid, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
@@ -181,7 +198,7 @@ func TestWritingToS3WithNoContentType(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
 	var err error
-	err = w.Write(expectedUUID, &p, "", expectedTransactionId)
+	_, err = w.Write(expectedUUID, &p, "", expectedTransactionId)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -196,13 +213,91 @@ func TestWritingToS3WithNoContentType(t *testing.T) {
 	assert.Equal(t, "PAYLOAD", body)
 }
 
+func TestWritingToS3WithOnlyUpdatesAllowed_SuccessWhenHashIsOutOfDate(t *testing.T) {
+	w, s := getWriterOnlyUpdates("0")
+	p := []byte("PAYLOAD")
+	ct := expectedContentType
+	var err error
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, s.putObjectInput)
+	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
+	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
+	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
+	assert.Equal(t, UPDATED, writeStatus, "Object should have existed prior to write and was updated")
+
+	rs := s.putObjectInput.Body
+	assert.NotNil(t, rs)
+	ba, err := ioutil.ReadAll(rs)
+	assert.NoError(t, err)
+	body := string(ba[:])
+	assert.Equal(t, "PAYLOAD", body)
+}
+
+func TestWritingToS3WithOnlyUpdatesAllowed_ObjectHasNoCurrentObjectHash(t *testing.T) {
+	w, s := getWriterOnlyUpdates("")
+	p := []byte("PAYLOAD")
+	ct := expectedContentType
+	var err error
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, s.putObjectInput)
+	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
+	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
+	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
+	assert.Equal(t, UPDATED, writeStatus, "Object should have existed prior to write with no hash metadata and was updated")
+
+	rs := s.putObjectInput.Body
+	assert.NotNil(t, rs)
+	ba, err := ioutil.ReadAll(rs)
+	assert.NoError(t, err)
+	body := string(ba[:])
+	assert.Equal(t, "PAYLOAD", body)
+}
+
+func TestWritingToS3WithOnlyUpdatesAllowed_NoObjectWrittenForObjectWithExistingHash(t *testing.T) {
+	var err error
+	p := []byte("PAYLOAD")
+	existingHash, err := hashstructure.Hash(&p, nil)
+	assert.NoError(t, err)
+	existingHashString := fmt.Sprint(existingHash)
+	w, s := getWriterOnlyUpdates(existingHashString)
+	ct := expectedContentType
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	assert.NoError(t, err)
+	assert.Empty(t, s.putObjectInput)
+	assert.Equal(t, UNCHANGED, writeStatus, "Object should have existed prior to write and was unchanged")
+}
+
+func TestWritingToS3WithOnlyUpdatesAllowed_SuccessForNewObject(t *testing.T) {
+	w, s := getWriterNoExistingObject()
+	p := []byte("PAYLOAD")
+	ct := expectedContentType
+	var err error
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, s.putObjectInput)
+	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
+	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
+	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
+	assert.Equal(t, CREATED, writeStatus, "Object should have not have existed prior to write and was created")
+
+	rs := s.putObjectInput.Body
+	assert.NotNil(t, rs)
+	ba, err := ioutil.ReadAll(rs)
+	assert.NoError(t, err)
+	body := string(ba[:])
+	assert.Equal(t, "PAYLOAD", body)
+}
+
 func TestFailingToWriteToS3(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	s.s3error = errors.New("S3 error")
-	err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
 	assert.Error(t, err)
+	assert.Equal(t, SERVICE_UNAVAILABLE, writeStatus, "Write should have returned an error with status unavailable")
 }
 
 func TestGetFromS3(t *testing.T) {
@@ -544,33 +639,6 @@ func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
 	assert.Equal(t, 25, strings.Count(string(payload[:]), "PAYLOAD"))
 }
 
-func TestS3Reader_Head(t *testing.T) {
-	r, s := getReader()
-	t.Run("Found", func(t *testing.T) {
-		found, err := r.Head(expectedUUID)
-		assert.NoError(t, err)
-		assert.True(t, found)
-		assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.headObjectInput.Key)
-		assert.Equal(t, "testBucket", *s.headObjectInput.Bucket)
-
-	})
-
-	t.Run("NotFound", func(t *testing.T) {
-		s.s3error = awserr.New("NotFound", "message", errors.New("Some error"))
-		found, err := r.Head(expectedUUID)
-		assert.NoError(t, err)
-		assert.False(t, found)
-	})
-
-	t.Run("Random Error", func(t *testing.T) {
-		s.s3error = errors.New("Random error")
-		found, err := r.Head(expectedUUID)
-		assert.Error(t, err)
-		assert.False(t, found)
-		assert.Equal(t, s.s3error, err)
-	})
-}
-
 func getListObjectsV2Output(keyCount int64, start int) *s3.ListObjectsV2Output {
 	contents := []*s3.Object{}
 	for i := start; i < start+int(keyCount); i++ {
@@ -596,7 +664,7 @@ func TestDelete(t *testing.T) {
 
 	t.Run("With prefix", func(t *testing.T) {
 		w, s = getWriter()
-		err := w.Delete(expectedUUID)
+		err := w.Delete(expectedUUID, expectedTransactionId)
 		assert.NoError(t, err)
 		assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.deleteObjectInput.Key)
 		assert.Equal(t, "testBucket", *s.deleteObjectInput.Bucket)
@@ -604,7 +672,7 @@ func TestDelete(t *testing.T) {
 
 	t.Run("Without prefix", func(t *testing.T) {
 		w, s = getWriterNoPrefix()
-		err := w.Delete(expectedUUID)
+		err := w.Delete(expectedUUID, expectedTransactionId)
 		assert.NoError(t, err)
 		assert.Equal(t, "/123e4567/e89b/12d3/a456/426655440000", *s.deleteObjectInput.Key)
 		assert.Equal(t, "testBucket", *s.deleteObjectInput.Bucket)
@@ -613,7 +681,7 @@ func TestDelete(t *testing.T) {
 	t.Run("Fails", func(t *testing.T) {
 		w, s = getWriter()
 		s.s3error = errors.New("Some S3 error")
-		err := w.Delete(expectedUUID)
+		err := w.Delete(expectedUUID, expectedTransactionId)
 		assert.Error(t, err)
 		assert.Equal(t, s.s3error, err)
 	})
@@ -654,16 +722,14 @@ func TestS3QProcessor_ProcessMsgNoneJsonShouldNotCallWriter(t *testing.T) {
 	m := generateConsumerMessage(expectedContentType, expectedUUID)
 	m.Body = "none json data is here"
 	qp.ProcessMsg(m)
-	assert.False(t, mw.writeCalled)
 }
 
 func TestS3QProcessor_ProcessMsgDealsWithErrorsFromWriter(t *testing.T) {
-	mw := &mockWriter{}
+	mw := &mockWriter{writeStatus: SERVICE_UNAVAILABLE}
 	mw.returnError = errors.New("Some error")
 	qp := NewQProcessor(mw)
 	m := generateConsumerMessage(expectedContentType, expectedUUID)
 	qp.ProcessMsg(m)
-	assert.True(t, mw.writeCalled)
 	assert.Equal(t, expectedUUID, mw.uuid)
 	assert.Equal(t, expectedTransactionId, mw.tid)
 	assert.Equal(t, expectedContentType, mw.ct)
@@ -707,10 +773,30 @@ func getReaderNoPrefix() (Reader, *mockS3Client) {
 
 func getWriter() (Writer, *mockS3Client) {
 	s := &mockS3Client{}
-	return NewS3Writer(s, "testBucket", "test/prefix"), s
+	s.headObjectOutput = &s3.HeadObjectOutput{}
+	return NewS3Writer(s, "testBucket", "test/prefix", false), s
 }
 
 func getWriterNoPrefix() (Writer, *mockS3Client) {
 	s := &mockS3Client{}
-	return NewS3Writer(s, "testBucket", ""), s
+	s.headObjectOutput = &s3.HeadObjectOutput{}
+	return NewS3Writer(s, "testBucket", "", true), s
+}
+
+func getWriterOnlyUpdates(currentHash string) (Writer, *mockS3Client) {
+	s := &mockS3Client{}
+	metadata := make(map[string]*string)
+	if currentHash != "" {
+		metadata["Current-Object-Hash"] = &currentHash
+	}
+	s.headObjectOutput = &s3.HeadObjectOutput{Metadata: metadata}
+	return NewS3Writer(s, "testBucket", "test/prefix", true), s
+}
+
+func getWriterNoExistingObject() (Writer, *mockS3Client) {
+	s := &mockS3Client{}
+	s.headObjectOutput = &s3.HeadObjectOutput{}
+
+	s.notFoundError = awserr.New("NotFound", "Object not found", errors.New("some error"))
+	return NewS3Writer(s, "testBucket", "test/prefix", true), s
 }
