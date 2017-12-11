@@ -125,7 +125,7 @@ func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	assert.Equal(t, "{\"message\":\"Updated concept record in store\"}", rec.Body.String())
 }
 
-func TestWriteHandlerAlreadyExistsReturnsNoContent(t *testing.T) {
+func TestWriteHandlerAlreadyExistsReturnsNotModified(t *testing.T) {
 	r := mux.NewRouter()
 	mw := &mockWriter{writeStatus: UNCHANGED}
 	mr := &mockReader{}
@@ -134,7 +134,7 @@ func TestWriteHandlerAlreadyExistsReturnsNoContent(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
 
-	assert.Equal(t, 204, rec.Code)
+	assert.Equal(t, 304, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
 	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
 	assert.Equal(t, ExpectedContentType, mw.ct)

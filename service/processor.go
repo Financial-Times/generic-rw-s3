@@ -299,7 +299,7 @@ type S3Writer struct {
 	svc                s3iface.S3API
 	bucketName         string
 	bucketPrefix       string
-	OnlyUpdatesEnabled bool
+	onlyUpdatesEnabled bool
 }
 
 func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string, onlyUpdatesEnabled bool) Writer {
@@ -307,7 +307,7 @@ func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string, only
 		svc:                svc,
 		bucketName:         bucketName,
 		bucketPrefix:       bucketPrefix,
-		OnlyUpdatesEnabled: onlyUpdatesEnabled,
+		onlyUpdatesEnabled: onlyUpdatesEnabled,
 	}
 }
 
@@ -347,7 +347,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (status,
 	status, newHash, err := w.compareObjectToStore(uuid, b, tid)
 	if err != nil {
 		return status, err
-	} else if w.OnlyUpdatesEnabled && status == UNCHANGED {
+	} else if w.onlyUpdatesEnabled && status == UNCHANGED {
 		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
 		return status, nil
 	}
@@ -443,7 +443,7 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		rw.Write([]byte("{\"message\":\"Downstream service responded with error\"}"))
 		return
 	case UNCHANGED:
-		rw.WriteHeader(http.StatusNoContent)
+		rw.WriteHeader(http.StatusNotModified)
 		return
 	case UPDATED:
 		rw.WriteHeader(http.StatusOK)
