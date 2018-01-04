@@ -9,6 +9,8 @@ image:
   repository: coco/generic-rw-s3
   pullPolicy: IfNotPresent
 resources:
+  requests:
+    memory: 20Mi
   limits:
     memory: 512Mi
 bucket:

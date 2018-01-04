@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Financial-Times/go-fthealth/v1a"
+	fthealth "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/service-status-go/gtg"
 	httpStatus "github.com/Financial-Times/service-status-go/httphandlers"
@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rcrowley/go-metrics"
 	log "github.com/sirupsen/logrus"
+	"time"
 )
 
 func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string) {
@@ -26,14 +27,23 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 	http.HandleFunc(httpStatus.PingPathDW, httpStatus.PingHandler)
 	http.HandleFunc(httpStatus.BuildInfoPath, httpStatus.BuildInfoHandler)
 	http.HandleFunc(httpStatus.BuildInfoPathDW, httpStatus.BuildInfoHandler)
-	http.HandleFunc("/__health", v1a.Handler("GenericReadWriteS3 Healthchecks",
-		"Runs a HEAD check on bucket", v1a.Check{
-			BusinessImpact:   "Unable to access S3 bucket",
-			Name:             "S3 Bucket check",
-			PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-%s", appName),
-			Severity:         1,
-			TechnicalSummary: `Can not access S3 bucket.`,
-			Checker:          c.healthCheck,
+	http.HandleFunc("/__health", fthealth.Handler(fthealth.TimedHealthCheck{
+		HealthCheck: fthealth.HealthCheck{
+			SystemCode: "GenericReadWriteS3 Healthchecks",
+			Name: "GenericReadWriteS3 Healthchecks",
+			Description: "Runs a HEAD check on bucket",
+			Checks: []fthealth.Check{
+				{
+					BusinessImpact:   "Unable to access S3 bucket",
+					Name:             "S3 Bucket check",
+					PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-%s", appName),
+					Severity:         1,
+					TechnicalSummary: `Can not access S3 bucket.`,
+					Checker:          c.healthCheck,
+				},
+			},
+		},
+			Timeout: 10 * time.Second,
 		}))
 
 	gtgHandler := httpStatus.NewGoodToGoHandler(c.gtgCheckHandler)
