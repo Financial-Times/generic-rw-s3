@@ -27,22 +27,23 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 	http.HandleFunc(httpStatus.PingPathDW, httpStatus.PingHandler)
 	http.HandleFunc(httpStatus.BuildInfoPath, httpStatus.BuildInfoHandler)
 	http.HandleFunc(httpStatus.BuildInfoPathDW, httpStatus.BuildInfoHandler)
-	http.HandleFunc("/__health", fthealth.Handler(fthealth.TimedHealthCheck{
-		HealthCheck: fthealth.HealthCheck{
-			SystemCode: "GenericReadWriteS3 Healthchecks",
-			Name: "GenericReadWriteS3 Healthchecks",
-			Description: "Runs a HEAD check on bucket",
-			Checks: []fthealth.Check{
-				{
-					BusinessImpact:   "Unable to access S3 bucket",
-					Name:             "S3 Bucket check",
-					PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-%s", appName),
-					Severity:         1,
-					TechnicalSummary: `Can not access S3 bucket.`,
-					Checker:          c.healthCheck,
+	http.HandleFunc("/__health", fthealth.Handler(
+		fthealth.TimedHealthCheck{
+			HealthCheck: fthealth.HealthCheck{
+				SystemCode:  "GenericReadWriteS3",
+				Name:        "GenericReadWriteS3 Healthchecks",
+				Description: "Runs a HEAD check on bucket",
+				Checks: []fthealth.Check{
+					{
+						BusinessImpact:   "Unable to access S3 bucket",
+						Name:             "S3 Bucket check",
+						PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-%s", appName),
+						Severity:         1,
+						TechnicalSummary: `Can not access S3 bucket.`,
+						Checker:          c.healthCheck,
+					},
 				},
 			},
-		},
 			Timeout: 10 * time.Second,
 		}))
 
