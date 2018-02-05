@@ -378,7 +378,7 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 	if err != nil {
 		e, ok := err.(awserr.Error)
 		if ok && e.Code() == "NotFound" {
-			return CREATED, 0, nil
+			return CREATED, objectHash, nil
 		}
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error retrieving object metadata")
 		return SERVICE_UNAVAILABLE, 0, err
