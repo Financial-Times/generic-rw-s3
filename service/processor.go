@@ -348,7 +348,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (status,
 	if err != nil {
 		return status, err
 	} else if w.onlyUpdatesEnabled && status == UNCHANGED {
-		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
+		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept has not been updated since last upload, record was skipped")
 		return status, nil
 	}
 
@@ -401,7 +401,7 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v", objectHash)
 	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v", currentHash)
 	if objectHash != currentHash {
-		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept is different to the stored record")
+		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
 		return UPDATED, objectHash, nil
 	}
 	return UNCHANGED, 0, nil
