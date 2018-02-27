@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"time"
+
 	fthealth "github.com/Financial-Times/go-fthealth/v1_1"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/service-status-go/gtg"
@@ -15,7 +17,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rcrowley/go-metrics"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string) {
@@ -38,7 +39,7 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 						BusinessImpact:   "Unable to access S3 bucket",
 						Name:             "S3 Bucket check",
 						PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-%s", appName),
-						Severity:         1,
+						Severity:         3,
 						TechnicalSummary: `Can not access S3 bucket.`,
 						Checker:          c.healthCheck,
 					},
