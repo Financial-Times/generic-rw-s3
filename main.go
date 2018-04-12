@@ -136,8 +136,8 @@ func main() {
 	})
 	requestLoggingEnabled := app.Bool(cli.BoolOpt{
 		Name:   "requestLoggingEnabled",
-		Value:  true,
-		Desc:   "Whether to log requests",
+		Value:  false,
+		Desc:   "Whether http request logging is enabled",
 		EnvVar: "REQUEST_LOGGING_ENABLED",
 	})
 
