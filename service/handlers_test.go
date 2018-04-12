@@ -25,7 +25,7 @@ const (
 func TestAddAdminHandlers(t *testing.T) {
 	s := &mockS3Client{}
 	r := mux.NewRouter()
-	AddAdminHandlers(r, s, "bucketName", "generic-rw-s3")
+	AddAdminHandlers(r, s, "bucketName", "generic-rw-s3", false)
 
 	t.Run(httpStatus.PingPath, func(t *testing.T) {
 		assertRequestAndResponse(t, httpStatus.PingPath, 200, "pong")
