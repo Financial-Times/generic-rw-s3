@@ -447,10 +447,12 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		return
 	case UPDATED:
 		rw.WriteHeader(http.StatusOK)
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept updated in s3")
 		rw.Write([]byte("{\"message\":\"Updated concept record in store\"}"))
 		return
 	case CREATED:
 		rw.WriteHeader(http.StatusCreated)
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept created in s3")
 		rw.Write([]byte("{\"message\":\"Created concept record in store\"}"))
 		return
 	default:
