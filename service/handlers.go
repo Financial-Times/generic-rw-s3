@@ -19,11 +19,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string) {
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, requestLoggingEnabled bool) {
 	c := checker{svc, bucketName}
 	var monitoringRouter http.Handler = servicesRouter
-	monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
-	monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
+	if requestLoggingEnabled {
+		monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
+		monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
+	}
+
 	http.HandleFunc(httpStatus.PingPath, httpStatus.PingHandler)
 	http.HandleFunc(httpStatus.PingPathDW, httpStatus.PingHandler)
 	http.HandleFunc(httpStatus.BuildInfoPath, httpStatus.BuildInfoHandler)
@@ -100,6 +103,7 @@ func Handlers(servicesRouter *mux.Router, wh WriterHandler, rh ReaderHandler, re
 	if resourcePath != "" {
 		resourcePath = fmt.Sprintf("/%s", resourcePath)
 	}
+
 	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}"), mh)
 	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__count"), ch)
 	servicesRouter.Handle(fmt.Sprintf("%s%s", resourcePath, "/__ids"), ih)

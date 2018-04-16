@@ -134,6 +134,12 @@ func main() {
 		Desc:   "When enabled app will only write to s3 when concept has changed since last write",
 		EnvVar: "ONLY_UPDATES_ENABLED",
 	})
+	requestLoggingEnabled := app.Bool(cli.BoolOpt{
+		Name:   "requestLoggingEnabled",
+		Value:  false,
+		Desc:   "Whether http request logging is enabled",
+		EnvVar: "REQUEST_LOGGING_ENABLED",
+	})
 
 	app.Action = func() {
 
@@ -145,7 +151,7 @@ func main() {
 		}
 		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
 
-		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled)
+		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
 	}
 
 	logger.InitLogger(*appName, *logLevel)
@@ -153,7 +159,7 @@ func main() {
 	app.Run(os.Args)
 }
 
-func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool) {
+func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -186,8 +192,9 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 	rh := service.NewReaderHandler(r)
 
 	servicesRouter := mux.NewRouter()
+
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, requestLoggingEnabled)
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName)
 
 	qp := service.NewQProcessor(w)
 
