@@ -352,6 +352,10 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHa
 		return status, nil
 	}
 
+	if status == UNCHANGED {
+		status = UPDATED
+	}
+
 	hashAsString := strconv.FormatUint(newHash, 10)
 	params.Metadata["Current-Object-Hash"] = &hashAsString
 

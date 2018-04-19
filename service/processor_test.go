@@ -283,7 +283,7 @@ func TestWritingToS3WithOnlyUpdatesAllowed_ObjectWrittenForObjectWithExistingHas
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
 	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
 	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
-	assert.Equal(t, UNCHANGED, writeStatus, "Object should have existed prior to write with with hash metadata and was updated")
+	assert.Equal(t, UPDATED, writeStatus, "Object should have existed prior to write with hash metadata but still should be updated")
 
 	rs := s.putObjectInput.Body
 	assert.NotNil(t, rs)
