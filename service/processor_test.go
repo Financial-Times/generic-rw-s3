@@ -140,7 +140,7 @@ func TestWritingToS3(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	_, err = w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	_, err = w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -169,7 +169,7 @@ func TestWritingToS3WithTransactionID(t *testing.T) {
 
 	w, s := getWriter()
 
-	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, expectedTransactionId, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
@@ -188,7 +188,7 @@ func TestWritingToS3WithNewTransactionID(t *testing.T) {
 
 	w, s := getWriter()
 
-	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid)
+	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid, false)
 
 	assert.NoError(t, err)
 	assert.Equal(t, mw.tid, *s.putObjectInput.Metadata[transactionid.TransactionIDKey])
@@ -198,7 +198,7 @@ func TestWritingToS3WithNoContentType(t *testing.T) {
 	w, s := getWriter()
 	p := []byte("PAYLOAD")
 	var err error
-	_, err = w.Write(expectedUUID, &p, "", expectedTransactionId)
+	_, err = w.Write(expectedUUID, &p, "", expectedTransactionId, false)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -218,7 +218,7 @@ func TestWritingToS3WithOnlyUpdatesAllowed_SuccessWhenHashIsOutOfDate(t *testing
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -239,7 +239,7 @@ func TestWritingToS3WithOnlyUpdatesAllowed_ObjectHasNoCurrentObjectHash(t *testi
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -263,10 +263,34 @@ func TestWritingToS3WithOnlyUpdatesAllowed_NoObjectWrittenForObjectWithExistingH
 	existingHashString := fmt.Sprint(existingHash)
 	w, s := getWriterOnlyUpdates(existingHashString)
 	ct := expectedContentType
-	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.NoError(t, err)
 	assert.Empty(t, s.putObjectInput)
 	assert.Equal(t, UNCHANGED, writeStatus, "Object should have existed prior to write and was unchanged")
+}
+
+func TestWritingToS3WithOnlyUpdatesAllowed_ObjectWrittenForObjectWithExistingHashWithIgnoreHash(t *testing.T) {
+	var err error
+	p := []byte("PAYLOAD")
+	existingHash, err := hashstructure.Hash(&p, nil)
+	assert.NoError(t, err)
+	existingHashString := fmt.Sprint(existingHash)
+	w, s := getWriterOnlyUpdates(existingHashString)
+	ct := expectedContentType
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, true)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, s.putObjectInput)
+	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
+	assert.Equal(t, "testBucket", *s.putObjectInput.Bucket)
+	assert.Equal(t, expectedContentType, *s.putObjectInput.ContentType)
+	assert.Equal(t, UNCHANGED, writeStatus, "Object should have existed prior to write with with hash metadata and was updated")
+
+	rs := s.putObjectInput.Body
+	assert.NotNil(t, rs)
+	ba, err := ioutil.ReadAll(rs)
+	assert.NoError(t, err)
+	body := string(ba[:])
+	assert.Equal(t, "PAYLOAD", body)
 }
 
 func TestWritingToS3WithOnlyUpdatesAllowed_SuccessForNewObject(t *testing.T) {
@@ -274,7 +298,7 @@ func TestWritingToS3WithOnlyUpdatesAllowed_SuccessForNewObject(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
-	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, s.putObjectInput)
 	assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.putObjectInput.Key)
@@ -295,7 +319,7 @@ func TestFailingToWriteToS3(t *testing.T) {
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	s.s3error = errors.New("S3 error")
-	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId)
+	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.Error(t, err)
 	assert.Equal(t, SERVICE_UNAVAILABLE, writeStatus, "Write should have returned an error with status unavailable")
 }

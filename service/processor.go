@@ -68,7 +68,7 @@ func (r *S3QProcessor) ProcessMsg(m consumer.Message) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	writeStatus, err := r.Write(uuid, &b, ct, tid)
+	writeStatus, err := r.Write(uuid, &b, ct, tid, false)
 	if err != nil {
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Failed to write")
 		return
@@ -291,7 +291,7 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string, transactionId string) (status, error)
+	Write(uuid string, b *[]byte, contentType string, transactionId string, ignoreHash bool) (status, error)
 	Delete(uuid string, transactionId string) error
 }
 
@@ -328,7 +328,7 @@ func (w *S3Writer) Delete(uuid string, tid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (status, error) {
+func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
 		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
@@ -347,7 +347,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string) (status,
 	status, newHash, err := w.compareObjectToStore(uuid, b, tid)
 	if err != nil {
 		return status, err
-	} else if w.onlyUpdatesEnabled && status == UNCHANGED {
+	} else if w.onlyUpdatesEnabled && !ignoreHash && status == UNCHANGED {
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept has not been updated since last upload, record was skipped")
 		return status, nil
 	}
@@ -430,8 +430,9 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ignoreHash, _ := strconv.ParseBool(r.Header.Get("X-Ignore-Hash"))
 	ct := r.Header.Get("Content-Type")
-	writeStatus, _ := w.writer.Write(uuid, &bs, ct, tid)
+	writeStatus, _ := w.writer.Write(uuid, &bs, ct, tid, ignoreHash)
 
 	switch writeStatus {
 	case INTERNAL_ERROR:
