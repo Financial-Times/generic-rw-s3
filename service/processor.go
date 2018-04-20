@@ -399,8 +399,18 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 		return INTERNAL_ERROR, 0, err
 	}
 	if objectHash != currentHash {
-		logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v, %s", objectHash, string(*b))
-		logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v, %s", currentHash, string(*b))
+		pr := &s3.GetObjectInput{
+			Bucket: aws.String(w.bucketName),
+			Key:    aws.String(getKey(w.bucketPrefix, uuid)),
+		}
+		r, err := w.svc.GetObject(pr)
+		if err != nil {
+			xb, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v, %s", objectHash, string(*b))
+				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v, %s", currentHash, string(xb))
+			}
+		}
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
 		logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Old object head: %#v", hoo)
 		return UPDATED, objectHash, nil
