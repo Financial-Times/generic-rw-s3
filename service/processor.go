@@ -402,10 +402,11 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 		logger.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Error whilst parsing current hash")
 		return INTERNAL_ERROR, 0, err
 	}
-	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v", objectHash)
-	logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v", currentHash)
 	if objectHash != currentHash {
+		logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v, %s", objectHash, string(*b))
+		logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v, %s", currentHash, string(*b))
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
+		logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Old object head: %#v", hoo)
 		return UPDATED, objectHash, nil
 	}
 	return UNCHANGED, 0, nil
