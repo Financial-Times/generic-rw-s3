@@ -411,12 +411,12 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 					logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Does not exist")
 				}
 				logger.WithTransactionID(tid).WithUUID(uuid).WithError(err).Debugf("Error getting existing obj")
-			} else {
-				xb, err := ioutil.ReadAll(r.Body)
-				if err == nil {
-					logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v, %s", objectHash, string(*b))
-					logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v, %s", currentHash, string(xb))
-				}
+			}
+		} else {
+			xb, err := ioutil.ReadAll(r.Body)
+			if err == nil {
+				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v, %s", objectHash, string(*b))
+				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v, %s", currentHash, string(xb))
 			}
 		}
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
