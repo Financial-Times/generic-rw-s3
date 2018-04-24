@@ -122,6 +122,8 @@ GTG: [http://localhost:8080/__gtg](http://localhost:8080/__gtg)
 
 
 ### Other Information
+####Hashing
+This service stores a hash of the payload in the metadata of the s3 object on each write. If the ONLY_UPDATES_ENABLED flag is set to true the payload's hash is compared to the stored record. Only records which have been updated or are entirely new will be written. Records that have not been updated will instead return 304 Not Modified. If the ONLY_UPDATES_ENABLED flag is set to false then records will always be updated regardless of the stored hash. The hash can also be bypassed by setting a request header of "X-Ignore-Hash" to true.
 
 #### S3 buckets
 
