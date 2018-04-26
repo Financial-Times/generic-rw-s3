@@ -20,7 +20,7 @@ RUN apk --no-cache --virtual .build-dependencies add git \
   && echo "Build flags: $LDFLAGS" \
   && echo "Fetching dependencies..." \
   && go get -u github.com/golang/dep/cmd/dep \
-  && $GOPATH/bin/dep ensure \
+  && $GOPATH/bin/dep ensure -vendor-only \
   && go build -ldflags="${LDFLAGS}" \
   && mv ${PROJECT} /${PROJECT} \
   && apk del .build-dependencies \

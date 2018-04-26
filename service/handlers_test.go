@@ -407,7 +407,7 @@ func (mw *mockWriter) Delete(uuid string, tid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string) (status, error) {
+func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid

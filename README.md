@@ -1,6 +1,8 @@
 # Generic Reader/Writer for S3 
 
-[![Circle CI](https://circleci.com/gh/Financial-Times/generic-rw-s3.svg?style=shield)](https://circleci.com/gh/Financial-Times/generic-rw-s3)[![Go Report Card](https://goreportcard.com/badge/github.com/Financial-Times/generic-rw-s3)](https://goreportcard.com/report/github.com/Financial-Times/generic-rw-s3) [![Coverage Status](https://coveralls.io/repos/github/Financial-Times/generic-rw-s3/badge.svg)](https://coveralls.io/github/Financial-Times/generic-rw-s3)
+[![Circle CI](https://circleci.com/gh/Financial-Times/generic-rw-s3.svg?style=shield)](https://circleci.com/gh/Financial-Times/generic-rw-s3)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Financial-Times/generic-rw-s3)](https://goreportcard.com/report/github.com/Financial-Times/generic-rw-s3)
+[![Coverage Status](https://coveralls.io/repos/github/Financial-Times/generic-rw-s3/badge.svg)](https://coveralls.io/github/Financial-Times/generic-rw-s3)
  
 ## system-code: upp-generic-s3-rw
 ## Introduction
@@ -8,10 +10,11 @@ An API for reading/writing generic payloads up to S3. It can be setup to read th
 
 ## Installation
 
-1. go get github.com/kardianos/govendor
+1. curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 2. go get github.com/Financial-Times/generic-rw-s3
 3. cd $GOPATH/src/github.com/Financial-Times/generic-rw-s3
-4. govendor sync
+4. dep ensure -v -vendor-only
+5. go install
 
 
 ## Running locally
@@ -122,6 +125,8 @@ GTG: [http://localhost:8080/__gtg](http://localhost:8080/__gtg)
 
 
 ### Other Information
+####Hashing
+This service stores a hash of the payload in the metadata of the s3 object on each write. If the ONLY_UPDATES_ENABLED flag is set to true the payload's hash is compared to the stored record. Only records which have been updated or are entirely new will be written. Records that have not been updated will instead return 304 Not Modified. If the ONLY_UPDATES_ENABLED flag is set to false then records will always be updated regardless of the stored hash. The hash can also be bypassed by setting a request header of "X-Ignore-Hash" to true.
 
 #### S3 buckets
 

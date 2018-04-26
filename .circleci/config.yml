@@ -18,12 +18,12 @@ jobs:
       - run:
           name: External Dependancies
           command: |
-            go get -u github.com/golang/dep/cmd/dep
             go get -u github.com/jstemmer/go-junit-report
             go get -u github.com/mattn/goveralls
+            curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
       - run:
           name: Import libraries
-          command: dep ensure -v
+          command: dep ensure -v -vendor-only
       - run:
           name: Run Tests
           command: |
@@ -36,7 +36,7 @@ jobs:
   dockerfile:
     working_directory: /generic-rw-s3
     docker:
-      - image: docker:1.12.6-git
+      - image: docker:18.03
     steps:
       - checkout
       - setup_docker_engine
