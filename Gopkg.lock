@@ -224,6 +224,12 @@
   revision = "a13efeb2fd213cf4be7227992aa54519af3b2ac0"
 
 [[projects]]
+  name = "gopkg.in/d4l3k/messagediff.v1"
+  packages = ["."]
+  revision = "29f32d820d112dbd66e58492a6ffb7cc3106312b"
+  version = "v1.2.1"
+
+[[projects]]
   name = "gopkg.in/jmcvetta/napping.v3"
   packages = ["."]
   revision = "4c7b4b235c63152afa9a1c6384e708e0fbfd77ca"
@@ -232,6 +238,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "321107b246e5cdca934b927c3ed3552ba95d1d71bf718710086fbfc430eb9736"
+  inputs-digest = "c12778482b672b41041e2356b88c4865c89639df805729f24afd34f47dd491f0"
   solver-name = "gps-cdcl"
   solver-version = 1

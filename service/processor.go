@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/mitchellh/hashstructure"
+	"gopkg.in/d4l3k/messagediff.v1"
 )
 
 type QProcessor interface {
@@ -419,8 +420,14 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 		} else {
 			xb, err := ioutil.ReadAll(r.Body)
 			if err == nil {
-				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Concept payload has hash of: %v, %s", objectHash, string(*b))
-				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Stored concept has hash of: %v, %s", currentHash, string(xb))
+				logger.WithTransactionID(tid).WithUUID(uuid).WithField("data", string(*b)).Debugf("Concept payload has hash of: %v", objectHash)
+				logger.WithTransactionID(tid).WithUUID(uuid).WithField("data", string(xb)).Debugf("Stored concept has hash of: %v", currentHash)
+				cur := map[string]interface{}{}
+				old := map[string]interface{}{}
+				json.Unmarshal(*b, &cur)
+				json.Unmarshal(xb, &old)
+				diff, equal := messagediff.PrettyDiff(old, cur)
+				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Equal: %b Diff: %s", equal, diff)
 			}
 		}
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
