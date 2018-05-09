@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -357,9 +356,17 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHa
 	if status == UNCHANGED {
 		status = UPDATED
 	}
-
 	hashAsString := strconv.FormatUint(newHash, 10)
 	params.Metadata["Current-Object-Hash"] = &hashAsString
+
+	if newHash == 0 || hashAsString == "" || hashAsString == "0" {
+		logger.
+			WithTransactionID(tid).
+			WithUUID(uuid).
+			WithField("newHash", newHash).
+			WithField("hashAsString", hashAsString).
+			Info("Hash is 0")
+	}
 
 	resp, err := w.svc.PutObject(params)
 	if err != nil {
@@ -393,12 +400,8 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 	metadataMap := hoo.Metadata
 	var currentHashString string
 
-	oldWasZero := false
 	if hash, ok := metadataMap["Current-Object-Hash"]; ok {
 		currentHashString = *hash
-		if currentHashString == "0" {
-			oldWasZero = true
-		}
 	} else {
 		currentHashString = "0"
 	}
@@ -433,18 +436,6 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 				json.Unmarshal(xb, &old)
 				diff, equal := messagediff.PrettyDiff(old, cur)
 				logger.WithTransactionID(tid).WithUUID(uuid).Debugf("Equal: %b Diff: %s", equal, diff)
-				if oldWasZero {
-					logger.
-						WithError(errors.New("Current hash is 0")).
-						WithTransactionID(tid).
-						WithUUID(uuid).
-						WithField("meta", metadataMap).
-						WithField("newHash", objectHash).
-						WithField("oldData", string(xb)).
-						WithField("newData", string(*b)).
-						Error("old hash is 0, NOT UPDATING")
-					return UNCHANGED, 0, nil
-				}
 			}
 		}
 		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept is different to the stored record")
