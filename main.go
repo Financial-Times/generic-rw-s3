@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/Financial-Times/base-ft-rw-app-go/baseftrwapp"
 	"github.com/Financial-Times/generic-rw-s3/service"
 	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
@@ -72,27 +71,6 @@ func main() {
 		EnvVar: "WORKERS",
 	})
 
-	graphiteTCPAddress := app.String(cli.StringOpt{
-		Name:   "graphiteTCPAddress",
-		Value:  "",
-		Desc:   "Graphite TCP address, e.g. graphite.ft.com:2003. Leave as default if you do NOT want to output to graphite (e.g. if running locally",
-		EnvVar: "GRAPHITE_ADDRESS",
-	})
-
-	graphitePrefix := app.String(cli.StringOpt{
-		Name:   "graphitePrefix",
-		Value:  "",
-		Desc:   "Prefix to use. Should start with content, include the environment, and the host name. e.g. coco.pre-prod.service-name.1 or content.test.people.rw.service-name.ftaps58938-law1a-eu-t",
-		EnvVar: "GRAPHITE_PREFIX",
-	})
-
-	logMetrics := app.Bool(cli.BoolOpt{
-		Name:   "logMetrics",
-		Value:  false,
-		Desc:   "Whether to log metrics. Set to true if running locally and you want metrics output",
-		EnvVar: "LOG_METRICS",
-	})
-
 	sourceAddresses := app.Strings(cli.StringsOpt{
 		Name:   "source-addresses",
 		Value:  []string{},
@@ -149,8 +127,6 @@ func main() {
 			Topic:                *sourceTopic,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
-		baseftrwapp.OutputMetricsIfRequired(*graphiteTCPAddress, *graphitePrefix, *logMetrics)
-
 		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
 	}
 

@@ -2,64 +2,59 @@
 
 
 [[projects]]
-  name = "github.com/Financial-Times/base-ft-rw-app-go"
-  packages = ["baseftrwapp"]
-  revision = "0800bf5938ecfb4d343ac396117287d289242c8f"
-  version = "1.0.2"
-
-[[projects]]
+  digest = "1:0e3c30694c9f3c284136c22a733cd119f6d7144a1e436eadfd1e5b9cdbeeefdf"
   name = "github.com/Financial-Times/go-fthealth"
   packages = ["v1_1"]
+  pruneopts = "UT"
   revision = "1b007e2b37b7936dfb6671fa17e5a29fd35a08ea"
   version = "0.4.0"
 
 [[projects]]
+  digest = "1:19246f2b1639555b28c883481c228f65164d13300d99b45feaed34f3d410be81"
   name = "github.com/Financial-Times/go-logger"
   packages = ["."]
+  pruneopts = "UT"
   revision = "ec38b420999cfcbc86816afb47f365dad510450c"
   version = "0.0.3"
 
 [[projects]]
+  digest = "1:92da547d0414ad8a3f1a405503ee9b103cb87f5beabc52ef907f712f2ee1caf2"
   name = "github.com/Financial-Times/http-handlers-go"
   packages = ["httphandlers"]
+  pruneopts = "UT"
   revision = "229ac16f1d9ec9bca485d2dafb9ec14dc7e9ba24"
   version = "0.1.1"
 
 [[projects]]
+  digest = "1:b5d1256554972b200522dd10dfe8a67a362fa0b5c2431479e8598a8e507a4949"
   name = "github.com/Financial-Times/message-queue-gonsumer"
   packages = ["consumer"]
+  pruneopts = "UT"
   revision = "6f96a5cb1e34c4baa8bc64f56524a7f2e0092ed3"
   version = "0.4.0"
 
 [[projects]]
-  name = "github.com/Financial-Times/neo-utils-go"
-  packages = ["neoutils"]
-  revision = "5cb1750096545b3c8f7384326247e3e30996a905"
-  version = "1.0.2"
-
-[[projects]]
+  digest = "1:79842a99b682a84375be78f0c6ba316d784eb347f8db2354c3a68fee39a497da"
   name = "github.com/Financial-Times/service-status-go"
   packages = [
     "buildinfo",
     "gtg",
-    "httphandlers"
+    "httphandlers",
   ]
+  pruneopts = "UT"
   revision = "3f5199736a3d7ae52394c63aac36834786825e21"
   version = "0.1.0"
 
 [[projects]]
+  digest = "1:38212fc0030b89d7be55aaf67bb91b273a4a14a026a3cee24b5e832ffe7e56ff"
   name = "github.com/Financial-Times/transactionid-utils-go"
   packages = ["."]
+  pruneopts = "UT"
   revision = "df2f00c734957c9dd651ce23ab0e0902504c7636"
   version = "v0.2.0"
 
 [[projects]]
-  name = "github.com/Financial-Times/up-rw-app-api-go"
-  packages = ["rwapi"]
-  revision = "d9d93a1f689538313d12fee6f5f10715cfe280e0"
-  version = "1.0.0"
-
-[[projects]]
+  digest = "1:58e8b911770e9e840733dc9693103de2b51e04b66015983efe1dc9da715e8bf1"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -87,50 +82,58 @@
     "private/protocol/xml/xmlutil",
     "service/s3",
     "service/s3/s3iface",
-    "service/sts"
+    "service/sts",
   ]
+  pruneopts = "UT"
   revision = "9365c0c6f32778b59eb41491629d37721658efb8"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/cyberdelia/go-metrics-graphite"
-  packages = ["."]
-  revision = "39f87cc3b432bbb898d7c643c0e93cac2bc865ad"
-
-[[projects]]
+  digest = "1:1f7f77f3320fee4b173abc1fbbafc7ce17c99dfd0bf79ce080c0bf73a83c31f8"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
+  pruneopts = "UT"
   revision = "ecdeabc65495df2dec95d7c4a4c3e021903035e5"
 
 [[projects]]
+  digest = "1:50772cf1f376b08cb57b4e8e9225775d9f9f4aad8487313afcb66846ceaa5d4c"
   name = "github.com/go-ini/ini"
   packages = ["."]
+  pruneopts = "UT"
   revision = "32e4c1e6bc4e7d0d8451aa6b75200d19e37a536a"
   version = "v1.32.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:c79fb010be38a59d657c48c6ba1d003a8aa651fa56b579d959d74573b7dff8e1"
   name = "github.com/gorilla/context"
   packages = ["."]
+  pruneopts = "UT"
   revision = "08b5f424b9271eedf6f9f0ce86cb9396ed337a42"
 
 [[projects]]
+  digest = "1:185a43b59a1f4e7ad4e7ccafb8a1538193d897a2a75be16dda093ec42ad231cf"
   name = "github.com/gorilla/handlers"
   packages = ["."]
+  pruneopts = "UT"
   revision = "90663712d74cb411cbef281bc1e08c19d1a76145"
   version = "v1.3.0"
 
 [[projects]]
+  digest = "1:ab9b40ddc06de1a89dd694c00987164faf928d2e0dc6b45d9609bbd2754f1e59"
   name = "github.com/gorilla/mux"
   packages = ["."]
+  pruneopts = "UT"
   revision = "2d5fef06b891c971b14aa6f71ca5ab6c03a36e0e"
 
 [[projects]]
+  digest = "1:ada37ea3db98b606d2b61577fbd87c0aabaa95e03b409033ebf58c6e5420b033"
   name = "github.com/hashicorp/go-version"
   packages = ["."]
+  pruneopts = "UT"
   revision = "fc61389e27c71d120f87031ca8c88a3428f372dd"
 
 [[projects]]
+  digest = "1:8cb68475988d317ec33f7d376ea1a0025671a94be51a7f125e4332db090e32a0"
   name = "github.com/jawher/mow.cli"
   packages = [
     ".",
@@ -140,98 +143,102 @@
     "internal/lexer",
     "internal/matcher",
     "internal/parser",
-    "internal/values"
+    "internal/values",
   ]
+  pruneopts = "UT"
   revision = "3ff64ca21987cfa628bd8d1865162b7ccd6107d7"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/jmcvetta/neoism"
-  packages = ["."]
-  revision = "4674154f870d19b356581843f481dccd6792dcc0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/jmcvetta/randutil"
-  packages = ["."]
-  revision = "2bb1b664bcff821e02b2a0644cd29c7e824d54f8"
-
-[[projects]]
+  digest = "1:e22af8c7518e1eab6f2eab2b7d7558927f816262586cd6ed9f349c97a6c285c4"
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
+  pruneopts = "UT"
   revision = "0b12d6b5"
 
 [[projects]]
   branch = "master"
-  name = "github.com/kr/pretty"
-  packages = ["."]
-  revision = "cfb55aafdaf3ec08f0db22699ab822c50091b1c4"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/kr/text"
-  packages = ["."]
-  revision = "7cafcd837844e784b526369c9bce262804aebc60"
-
-[[projects]]
-  branch = "master"
+  digest = "1:544635141f5fb084637823f438f3563be046a9730c256d2e7760dbb741cd88b5"
   name = "github.com/mitchellh/hashstructure"
   packages = ["."]
+  pruneopts = "UT"
   revision = "2bca23e0e452137f789efbc8610126fd8b94f73b"
 
 [[projects]]
+  digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
+  pruneopts = "UT"
   revision = "792786c7400a136282c1664665ae0a8db921c6c2"
   version = "v1.0.0"
 
 [[projects]]
+  digest = "1:166d5400333156c32e5ae39062e75bf455882007797f45fdcf8079e6634489f6"
   name = "github.com/rcrowley/go-metrics"
   packages = ["."]
+  pruneopts = "UT"
   revision = "1f30fe9094a513ce4c700b9a54458bbb0c96996c"
 
 [[projects]]
+  digest = "1:89608741fb3ab53a65f0153220127be7da09df0d6e964e031e639ef6e0b72bc9"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
+  pruneopts = "UT"
   revision = "95cd2b9c79aa5e72ab0bc69b7ccc2be15bf850f6"
 
 [[projects]]
+  digest = "1:1f37c313333ab92ceaa17b1f7f4427e316f58147d0a5dce1665e2d3091851e9a"
   name = "github.com/stretchr/testify"
   packages = ["assert"]
+  pruneopts = "UT"
   revision = "2aa2c176b9dab406a6970f6a55f513e8a8c8b18f"
 
 [[projects]]
-  name = "go4.org"
-  packages = ["osutil"]
-  revision = "034d17a462f7b2dcd1a4a73553ec5357ff6e6c6e"
-
-[[projects]]
+  digest = "1:78f95fc7ff186fed85bf41c716d744b25367e0b3941dc670bf0376aedc19f15a"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
+  pruneopts = "UT"
   revision = "b080dc9a8c480b08e698fb1219160d598526310f"
 
 [[projects]]
+  digest = "1:76ee51c3f468493aff39dbacc401e8831fbb765104cbf613b89bef01cf4bad70"
   name = "golang.org/x/net"
   packages = ["context"]
+  pruneopts = "UT"
   revision = "c7086645de248775cbf2373cf5ca4d2fa664b8c1"
 
 [[projects]]
+  digest = "1:c5174b3b7c6e691dc4bd7fcba11372988819567e77f2bccac554acc64703a257"
   name = "golang.org/x/sys"
   packages = [
     "unix",
-    "windows"
+    "windows",
   ]
+  pruneopts = "UT"
   revision = "a13efeb2fd213cf4be7227992aa54519af3b2ac0"
-
-[[projects]]
-  name = "gopkg.in/jmcvetta/napping.v3"
-  packages = ["."]
-  revision = "4c7b4b235c63152afa9a1c6384e708e0fbfd77ca"
-  version = "v3.2.0"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "321107b246e5cdca934b927c3ed3552ba95d1d71bf718710086fbfc430eb9736"
+  input-imports = [
+    "github.com/Financial-Times/go-fthealth/v1_1",
+    "github.com/Financial-Times/go-logger",
+    "github.com/Financial-Times/http-handlers-go/httphandlers",
+    "github.com/Financial-Times/message-queue-gonsumer/consumer",
+    "github.com/Financial-Times/service-status-go/gtg",
+    "github.com/Financial-Times/service-status-go/httphandlers",
+    "github.com/Financial-Times/transactionid-utils-go",
+    "github.com/aws/aws-sdk-go/aws",
+    "github.com/aws/aws-sdk-go/aws/awserr",
+    "github.com/aws/aws-sdk-go/aws/session",
+    "github.com/aws/aws-sdk-go/service/s3",
+    "github.com/aws/aws-sdk-go/service/s3/s3iface",
+    "github.com/gorilla/handlers",
+    "github.com/gorilla/mux",
+    "github.com/jawher/mow.cli",
+    "github.com/mitchellh/hashstructure",
+    "github.com/rcrowley/go-metrics",
+    "github.com/sirupsen/logrus",
+    "github.com/stretchr/testify/assert",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
