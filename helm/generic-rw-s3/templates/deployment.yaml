@@ -37,13 +37,6 @@ spec:
           value: "{{ .Values.service.name }}"
         - name: APP_PORT
           value: "8080"
-        - name: GRAPHITE_ADDRESS
-          valueFrom:
-            configMapKeyRef:
-              name: global-config
-              key: graphite.address
-        - name: GRAPHITE_PREFIX
-          value: "coco.services.k8s.{{ .Values.service.name }}"
         - name: AWS_REGION
           valueFrom:
             configMapKeyRef:
@@ -64,8 +57,6 @@ spec:
             configMapKeyRef:
               name: global-config
               key: {{ .Values.bucket.key }}
-        - name: LOG_METRICS
-          value: "false"
         - name: ONLY_UPDATES_ENABLED
           value: "true"
 {{ toYaml .Values.env | indent 8 }}
