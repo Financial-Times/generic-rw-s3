@@ -1,4 +1,4 @@
-FROM golang:1.10-alpine
+FROM golang:1.12-alpine
 
 ENV PROJECT=generic-rw-s3
 COPY . /${PROJECT}-sources/
