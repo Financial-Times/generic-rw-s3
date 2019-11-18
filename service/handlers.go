@@ -41,7 +41,7 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 					{
 						BusinessImpact:   "Unable to access S3 bucket",
 						Name:             "S3 Bucket check",
-						PanicGuide:       fmt.Sprintf("https://dewey.in.ft.com/view/system/upp-%s", appName),
+						PanicGuide:       fmt.Sprintf("https://runbooks.in.ft.com/upp-%s", appName),
 						Severity:         3,
 						TechnicalSummary: `Can not access S3 bucket.`,
 						Checker:          c.healthCheck,
