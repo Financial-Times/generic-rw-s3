@@ -1,10 +1,9 @@
-FROM golang:1.10-alpine
+FROM golang:1
 
 ENV PROJECT=generic-rw-s3
 COPY . /${PROJECT}-sources/
 
-RUN apk --no-cache --virtual .build-dependencies add git curl \
-  && ORG_PATH="github.com/Financial-Times" \
+RUN ORG_PATH="github.com/Financial-Times" \
   && REPO_PATH="${ORG_PATH}/${PROJECT}" \
   && mkdir -p $GOPATH/src/${ORG_PATH} \
   # Linking the project sources in the GOPATH folder
@@ -21,10 +20,11 @@ RUN apk --no-cache --virtual .build-dependencies add git curl \
   && echo "Fetching dependencies..." \
   && curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh \
   && $GOPATH/bin/dep ensure -vendor-only \
-  && go build -ldflags="${LDFLAGS}" \
-  && mv ${PROJECT} /${PROJECT} \
-  && apk del .build-dependencies \
-  && rm -rf $GOPATH /var/cache/apk/*
+  && CGO_ENABLED=0 go build -a -o /artefacts/${PROJECT} -ldflags="${LDFLAGS}" 
 
+FROM scratch
 WORKDIR /
+COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=0 /artefacts/* /
+
 CMD ["/generic-rw-s3"]
