@@ -6,14 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/Financial-Times/generic-rw-s3/service"
-	"github.com/Financial-Times/go-logger"
+	"github.com/Financial-Times/generic-rw-s3/v2/service"
+	log "github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
-	"github.com/jawher/mow.cli"
+	cli "github.com/jawher/mow.cli"
 )
 
 const (
@@ -119,6 +119,11 @@ func main() {
 		EnvVar: "REQUEST_LOGGING_ENABLED",
 	})
 
+	logConf := log.KeyNamesConfig{KeyTime: "@time"}
+	logger := log.NewUPPLogger(*appName, *logLevel, logConf)
+
+	logger.Infof("Application started with args %s", os.Args)
+
 	app.Action = func() {
 
 		qConf := consumer.QueueConfig{
@@ -127,15 +132,34 @@ func main() {
 			Topic:                *sourceTopic,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
-		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
+		runServer(*appName,
+			*port,
+			*resourcePath,
+			*awsRegion,
+			*bucketName,
+			*bucketPrefix,
+			*wrkSize,
+			qConf,
+			*onlyUpdatesEnabled,
+			*requestLoggingEnabled,
+			logger)
 	}
 
-	logger.InitLogger(*appName, *logLevel)
-	logger.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
+func runServer(appName string,
+	port string,
+	resourcePath string,
+	awsRegion string,
+	bucketName string,
+	bucketPrefix string,
+	wrks int,
+	qConf consumer.QueueConfig,
+	onlyUpdatesEnabled bool,
+	requestLoggingEnabled bool,
+	logger *log.UPPLogger) {
+
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
