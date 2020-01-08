@@ -9,7 +9,7 @@ import (
 	"github.com/Financial-Times/generic-rw-s3/v2/service"
 	"github.com/Financial-Times/go-logger"
 	log "github.com/Financial-Times/go-logger/v2"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	consumer "github.com/Financial-Times/message-queue-gonsumer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -203,7 +203,7 @@ func runServer(appName string,
 	uppLogger.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
-		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
+		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc, uppLogger)
 		go c.Start()
 		defer c.Stop()
 	}
