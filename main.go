@@ -6,14 +6,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/Financial-Times/generic-rw-s3/service"
+	"github.com/Financial-Times/generic-rw-s3/v2/service"
 	"github.com/Financial-Times/go-logger"
+	log "github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
-	"github.com/jawher/mow.cli"
+	cli "github.com/jawher/mow.cli"
 )
 
 const (
@@ -121,21 +122,46 @@ func main() {
 
 	app.Action = func() {
 
+		logger.InitLogger(*appName, *logLevel)
+
+		logConfig := log.KeyNamesConfig{KeyTime: "@time"}
+		uppLogger := log.NewUPPLogger(*appName, *logLevel, logConfig)
+		uppLogger.Infof("Application started with args %s", os.Args)
+
 		qConf := consumer.QueueConfig{
 			Addrs:                *sourceAddresses,
 			Group:                *sourceGroup,
 			Topic:                *sourceTopic,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
-		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
+		runServer(*appName,
+			*port,
+			*resourcePath,
+			*awsRegion,
+			*bucketName,
+			*bucketPrefix,
+			*wrkSize,
+			qConf,
+			*onlyUpdatesEnabled,
+			*requestLoggingEnabled,
+			uppLogger)
 	}
 
-	logger.InitLogger(*appName, *logLevel)
-	logger.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
+func runServer(appName string,
+	port string,
+	resourcePath string,
+	awsRegion string,
+	bucketName string,
+	bucketPrefix string,
+	wrks int,
+	qConf consumer.QueueConfig,
+	onlyUpdatesEnabled bool,
+	requestLoggingEnabled bool,
+	uppLogger *log.UPPLogger) {
+
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -157,7 +183,7 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 			HTTPClient: hc,
 		})
 	if err != nil {
-		logger.Fatalf("Failed to create AWS session: %v", err)
+		uppLogger.Fatalf("Failed to create AWS session: %v", err)
 	}
 	svc := s3.New(sess)
 
@@ -174,7 +200,7 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 
 	qp := service.NewQProcessor(w)
 
-	logger.Infof("listening on %v", port)
+	uppLogger.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
 		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
@@ -182,7 +208,7 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 		defer c.Stop()
 	}
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		logger.Fatalf("Unable to start server: %v", err)
+		uppLogger.Fatalf("Unable to start server: %v", err)
 	}
 
 }
