@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Financial-Times/go-logger"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	consumer "github.com/Financial-Times/message-queue-gonsumer"
 	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
