@@ -348,7 +348,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHa
 	if err != nil {
 		return status, err
 	} else if w.onlyUpdatesEnabled && !ignoreHash && status == UNCHANGED {
-		logger.WithTransactionID(tid).WithUUID(uuid).Debug("Concept has not been updated since last upload, record was skipped")
+		logger.WithTransactionID(tid).WithUUID(uuid).Info("Concept has not been updated since last upload, record was skipped")
 		return status, nil
 	}
 
