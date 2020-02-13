@@ -10,10 +10,11 @@ import (
 	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	"github.com/aws/aws-sdk-go/aws"
+	credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
-	"github.com/jawher/mow.cli"
+	cli "github.com/jawher/mow.cli"
 )
 
 const (
@@ -150,12 +151,26 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
-	sess, err := session.NewSession(
-		&aws.Config{
-			Region:     aws.String(awsRegion),
-			MaxRetries: aws.Int(1),
-			HTTPClient: hc,
-		})
+
+	cfg := &aws.Config{
+		Region:     aws.String(awsRegion),
+		MaxRetries: aws.Int(1),
+		HTTPClient: hc,
+	}
+
+	if os.Getenv("ENV") == "local" {
+		endpoint := os.Getenv("S3_ENDPOINT")
+		if endpoint == "" {
+			endpoint = "http://localhost:8080"
+		}
+
+		cfg.Credentials = credentials.NewStaticCredentials("id", "secret", "token")
+		cfg.Endpoint = aws.String(endpoint)
+		cfg.DisableSSL = aws.Bool(true)
+		cfg.S3ForcePathStyle = aws.Bool(true)
+	}
+
+	sess, err := session.NewSession(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to create AWS session: %v", err)
 	}
