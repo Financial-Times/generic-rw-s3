@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/opentracing/opentracing-go"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -427,6 +428,11 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
 	uuid := uuid(r.URL.Path)
 	rw.Header().Set("Content-Type", "application/json")
+	sp, _ := opentracing.StartSpanFromContext(r.Context(), "Write", opentracing.Tags{
+		"uuid":uuid,
+		"transaction_id":tid,
+	})
+	defer sp.Finish()
 	var err error
 	bs, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -476,6 +482,11 @@ func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWri
 func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
 	uuid := uuid(r.URL.Path)
+	sp, _ := opentracing.StartSpanFromContext(r.Context(), "Delete", opentracing.Tags{
+		"uuid":uuid,
+		"transaction_id":tid,
+	})
+	defer sp.Finish()
 	if err := w.writer.Delete(uuid, tid); err != nil {
 		rw.Header().Set("Content-Type", "application/json")
 		writerServiceUnavailable(uuid, err, rw, tid)
@@ -542,6 +553,12 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
 	uuid := uuid(r.URL.Path)
 	f, i, ct, err := rh.reader.Get(uuid)
+	sp, _ := opentracing.StartSpanFromContext(r.Context(), "Get", opentracing.Tags{
+		"uuid":uuid,
+		"transaction_id":tid,
+	})
+	defer sp.Finish()
+
 	if err != nil {
 		readerServiceUnavailable(r.URL.RequestURI(), err, rw, tid)
 		return

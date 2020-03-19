@@ -1,20 +1,22 @@
 package main
 
 import (
+
+	"github.com/opentracing/opentracing-go"
 	"net"
 	"net/http"
 	"os"
 	"time"
-
+	jaegercfg "github.com/uber/jaeger-client-go/config"
 	"github.com/Financial-Times/generic-rw-s3/service"
 	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	"github.com/aws/aws-sdk-go/aws"
-	credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	cli "github.com/jawher/mow.cli"
+	credentials "github.com/aws/aws-sdk-go/aws/credentials"
 )
 
 const (
@@ -196,6 +198,25 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 		go c.Start()
 		defer c.Stop()
 	}
+
+	os.Setenv("JAEGER_SERVICE_NAME", appName)
+
+	jcfg, err := jaegercfg.FromEnv()
+	if err != nil {
+		// parsing errors might happen here, such as when we get a string where we expect a number
+		logger.Printf("Could not parse Jaeger env vars: %s", err.Error())
+		return
+	}
+	logger.Printf("jaeger host: %s", jcfg.Reporter.LocalAgentHostPort)
+	tracer, closer, err := jcfg.NewTracer()
+	if err != nil {
+		logger.Printf("Could not initialize jaeger tracer: %s", err.Error())
+		return
+	}
+	defer closer.Close()
+
+	opentracing.SetGlobalTracer(tracer)
+
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		logger.Fatalf("Unable to start server: %v", err)
 	}
