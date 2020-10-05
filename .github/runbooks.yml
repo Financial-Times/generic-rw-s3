@@ -35,4 +35,4 @@ runbooks:
     # runbook.md tries to parse the system code from the runbook's filename (format: my-sys-code_runbook.md)
     systemCodes:
         # paths are relative to root, omitting ./ (case-insensitive)
-        upp-generic-rw-s3: runbooks/runbook_generic-rw-s3.md
+        upp-generic-rw-s3: runbooks/runbook.md
