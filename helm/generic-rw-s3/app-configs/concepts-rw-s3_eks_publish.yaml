@@ -2,7 +2,6 @@
 replicaCount: 1
 service:
   name: concepts-rw-s3
-eksCluster: true
 bucket:
   key: "concepts-rw-s3.bucket"
   # We have a single bucket where all the clusters in all regions write
