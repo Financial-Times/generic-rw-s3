@@ -1,6 +1,6 @@
 # UPP - Generic Read/Write S3
 
-Reads CES suggestion messages off kafka and stores them in S3; can also read/write/delete S3 objects via /concept/{uuid} endpoints.
+Reads CES suggestion messages off kafka and stores them in S3; can also read/write/delete S3 objects via /{uuid} endpoints.
 
 ## Code
 
