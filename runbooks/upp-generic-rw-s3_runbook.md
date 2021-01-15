@@ -1,6 +1,6 @@
 # UPP - Generic Read/Write S3
 
-Reads CES suggestion messages off kafka and stores them in S3; can also read/write/delete S3 objects via /concept/{uuid} endpoints.
+Reads CES suggestion messages off kafka and stores them in S3; can also read/write/delete S3 objects via /{uuid} endpoints.
 
 ## Code
 
@@ -8,7 +8,7 @@ upp-generic-rw-s3
 
 ## Primary URL
 
-<https://github.com/Financial-Times/generic-rw-s3>
+<https://upp-prod-delivery-glb.upp.ft.com/__generic-rw-s3/>
 
 ## Service Tier
 
@@ -34,6 +34,9 @@ content
 - elitsa.pavlova
 - georgi.ivanov
 - dimitar.terziev
+- marina.chompalova
+- miroslav.gatsanoga
+- asparuh.filipov
 
 ## Host Platform
 
@@ -41,11 +44,8 @@ AWS
 
 ## Architecture
 
-This is an API for reading/writing generic payloads up to S3. It can be setup to read those payloads off Kafka. Complete API specification can be found [here](https://docs.google.com/document/d/1Ck-o0Le9cXOfm-aVjiGmOT7ZTB5W5fDTsPqGkhzfa-U/edit#heading=h.jwsnnbv7enh5)
-Admin endpoints:
-
-- Healthchecks: <http://localhost:8080/__health>
-- Build Info: <http://localhost:8080/__build-info> GTG: <http://localhost:8080/__gtg>
+This is an API for reading/writing generic payloads up to S3. It can be setup to read those payloads off Kafka.
+Complete API specification can be found [here](https://docs.google.com/document/d/1Ck-o0Le9cXOfm-aVjiGmOT7ZTB5W5fDTsPqGkhzfa-U/edit#heading=h.jwsnnbv7enh5)
 
 ## Contains Personal Data
 
