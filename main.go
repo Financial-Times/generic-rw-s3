@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/Financial-Times/generic-rw-s3/service"
 	"github.com/Financial-Times/go-logger"
 	"github.com/Financial-Times/message-queue-gonsumer/consumer"
 	"github.com/aws/aws-sdk-go/aws"
@@ -14,7 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
+	"github.com/ivan-p-nikolov/jeager-service-example/fttracing"
 	cli "github.com/jawher/mow.cli"
+
+	"github.com/Financial-Times/generic-rw-s3/service"
 )
 
 const (
@@ -137,7 +139,13 @@ func main() {
 }
 
 func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
-	hc := &http.Client{
+	shutdown, err := fttracing.InitTracing(appName)
+	if err != nil {
+		logger.WithError(err).Warn("failed to init tracing")
+	} else {
+		defer shutdown()
+	}
+	hc := http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -151,11 +159,11 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
-
+	hc = fttracing.NewHTTPClient(hc.Transport)
 	cfg := &aws.Config{
 		Region:     aws.String(awsRegion),
 		MaxRetries: aws.Int(1),
-		HTTPClient: hc,
+		HTTPClient: &hc,
 	}
 
 	if os.Getenv("ENV") == "local" {
@@ -186,13 +194,13 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 
 	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, requestLoggingEnabled)
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
-
+	fttracing.AddTelemetry(servicesRouter, appName)
 	qp := service.NewQProcessor(w)
 
 	logger.Infof("listening on %v", port)
 
 	if qConf.Topic != "" {
-		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
+		c := consumer.NewConsumer(qConf, qp.ProcessMsg, &hc)
 		go c.Start()
 		defer c.Stop()
 	}
