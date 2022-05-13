@@ -2,6 +2,7 @@
 replicaCount: 1
 service:
   name: generic-rw-s3
+  systemCode: upp-generic-rw-s3
 bucket:
   key: "generic-rw-s3.bucket"
   # We have a separate bucket in each region on the cluster

@@ -19,7 +19,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, requestLoggingEnabled bool) {
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, appSystemCode string, requestLoggingEnabled bool) {
 	c := checker{svc, bucketName}
 	var monitoringRouter http.Handler = servicesRouter
 	if requestLoggingEnabled {
@@ -34,14 +34,14 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 	http.HandleFunc("/__health", fthealth.Handler(
 		fthealth.TimedHealthCheck{
 			HealthCheck: fthealth.HealthCheck{
-				SystemCode:  "GenericReadWriteS3",
-				Name:        "GenericReadWriteS3 Healthchecks",
+				SystemCode:  appSystemCode,
+				Name:        appName + " Healthchecks",
 				Description: "Runs a HEAD check on bucket",
 				Checks: []fthealth.Check{
 					{
 						BusinessImpact:   "Unable to access S3 bucket",
 						Name:             "S3 Bucket check",
-						PanicGuide:       fmt.Sprintf("https://runbooks.in.ft.com/upp-%s", appName),
+						PanicGuide:       "https://runbooks.ftops.tech/" + appSystemCode,
 						Severity:         3,
 						TechnicalSummary: `Can not access S3 bucket.`,
 						Checker:          c.healthCheck,

@@ -37,6 +37,8 @@ spec:
           value: "{{ .Values.service.name }}"
         - name: APP_PORT
           value: "8080"
+        - name: APP_SYSTEM_CODE
+          value: {{ .Values.service.systemCode }}
         - name: AWS_REGION
           valueFrom:
             configMapKeyRef:
