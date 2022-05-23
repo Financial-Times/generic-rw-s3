@@ -29,6 +29,11 @@ func main() {
 		Desc:   "Application name",
 		EnvVar: "APP_NAME",
 	})
+	appSystemCode := app.String(cli.StringOpt{
+		Name:   "appSystemCode",
+		Desc:   "Application systemCode",
+		EnvVar: "APP_SYSTEM_CODE",
+	})
 
 	port := app.String(cli.StringOpt{
 		Name:   "port",
@@ -128,7 +133,7 @@ func main() {
 			Topic:                *sourceTopic,
 			ConcurrentProcessing: *sourceConcurrentProcessing,
 		}
-		runServer(*appName, *port, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
+		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
 	}
 
 	logger.InitLogger(*appName, *logLevel)
@@ -136,7 +141,7 @@ func main() {
 	app.Run(os.Args)
 }
 
-func runServer(appName string, port string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
+func runServer(appName string, port string, appSystemCode string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -184,7 +189,7 @@ func runServer(appName string, port string, resourcePath string, awsRegion strin
 
 	servicesRouter := mux.NewRouter()
 
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, requestLoggingEnabled)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, appSystemCode, requestLoggingEnabled)
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
 
 	qp := service.NewQProcessor(w)
