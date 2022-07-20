@@ -22,3 +22,4 @@ env: # the two instances of the generic-rw-s3 app use a different set of env var
     value: "val1"
   - name: var2
     value: "val2"
+serviceAccountName: eksctl-conceptsrws3-serviceaccount
