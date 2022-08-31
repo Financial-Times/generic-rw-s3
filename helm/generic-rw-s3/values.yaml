@@ -18,7 +18,5 @@ bucket:
   awsRegionKey: "" # the global-config key to use to find the environment specific S3 bucket region
 env: # the two instances of the generic-rw-s3 app use a different set of env vars
 # this section should contain the set of env vars specific to the instance of the app
-  - name: var1
-    value: "val1"
-  - name: var2
-    value: "val2"
+  KAFKA_LAG_TOLERANCE: 120
+  LOG_LEVEL: INFO
