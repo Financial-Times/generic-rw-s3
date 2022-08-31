@@ -198,7 +198,6 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 
 	var consumer *kafka.Consumer
 	if readTopic != nil {
-
 		topics := []*kafka.Topic{kafka.NewTopic(*readTopic, kafka.WithLagTolerance(int64(*consumerLagTolerance)))}
 
 		consumer = kafka.NewConsumer(qConf, topics, log)

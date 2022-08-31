@@ -85,7 +85,7 @@ func (r *S3QProcessor) ProcessMsg(m kafka.FTMessage) {
 		r.log.WithTransactionID(tid).WithUUID(uuid).Info("Created concept record in s3 successfully")
 		return
 	default:
-		r.log.WithTransactionID(tid).WithUUID(uuid).Error("Unhandled error occured!")
+		r.log.WithTransactionID(tid).WithUUID(uuid).Error("Unhandled error occurred!")
 		return
 	}
 }
@@ -489,7 +489,7 @@ func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.log.WithTransactionID(tid).WithUUID(uuid).Info("Delete succesful")
+	w.log.WithTransactionID(tid).WithUUID(uuid).Info("Delete successful")
 	rw.WriteHeader(http.StatusNoContent)
 }
 
