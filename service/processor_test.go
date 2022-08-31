@@ -13,15 +13,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Financial-Times/go-logger"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	"github.com/Financial-Times/go-logger/v2"
+	"github.com/Financial-Times/kafka-client-go/v3"
 	transactionid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/mitchellh/hashstructure"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,12 +49,13 @@ type mockS3Client struct {
 	getObjectCount       int
 	payload              string
 	ct                   string
+	log                  *logger.UPPLogger
 }
 
 func (m *mockS3Client) PutObject(poi *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Put params: %v", poi)
+	m.log.Infof("Put params: %v", poi)
 	m.putObjectInput = poi
 	return nil, m.s3error
 }
@@ -63,14 +63,14 @@ func (m *mockS3Client) PutObject(poi *s3.PutObjectInput) (*s3.PutObjectOutput, e
 func (m *mockS3Client) HeadBucket(hbi *s3.HeadBucketInput) (*s3.HeadBucketOutput, error) {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Head params: %v", hbi)
+	m.log.Infof("Head params: %v", hbi)
 	m.headBucketInput = hbi
 	return nil, m.s3error
 }
 func (m *mockS3Client) HeadObject(hoi *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Head params: %v", hoi)
+	m.log.Infof("Head params: %v", hoi)
 	m.headObjectInput = hoi
 	var err error
 	if m.notFoundError != nil {
@@ -87,7 +87,7 @@ func (m *mockS3Client) HeadObject(hoi *s3.HeadObjectInput) (*s3.HeadObjectOutput
 func (m *mockS3Client) DeleteObject(doi *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Delete params: %v", doi)
+	m.log.Infof("Delete params: %v", doi)
 	m.deleteObjectInput = doi
 	return m.deleteObjectOutput, m.s3error
 }
@@ -95,7 +95,7 @@ func (m *mockS3Client) DeleteObject(doi *s3.DeleteObjectInput) (*s3.DeleteObject
 func (m *mockS3Client) GetObject(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Get params: %v", goi)
+	m.log.Infof("Get params: %v", goi)
 	m.getObjectInput = goi
 	payload := m.payload + strconv.Itoa(m.getObjectCount)
 	m.getObjectCount++
@@ -108,7 +108,7 @@ func (m *mockS3Client) GetObject(goi *s3.GetObjectInput) (*s3.GetObjectOutput, e
 func (m *mockS3Client) ListObjectsV2(loi *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, error) {
 	m.Lock()
 	defer m.Unlock()
-	log.Infof("Get ListObjectsV2: %v", loi)
+	m.log.Infof("Get ListObjectsV2: %v", loi)
 	m.listObjectsV2Input = append(m.listObjectsV2Input, loi)
 	var loo *s3.ListObjectsV2Output
 	if len(m.listObjectsV2Outputs) > 0 {
@@ -120,7 +120,7 @@ func (m *mockS3Client) ListObjectsV2(loi *s3.ListObjectsV2Input) (*s3.ListObject
 func (m *mockS3Client) ListObjectsV2Pages(loi *s3.ListObjectsV2Input, fn func(p *s3.ListObjectsV2Output, lastPage bool) (shouldContinue bool)) error {
 	m.Lock()
 	defer m.Unlock()
-	log.Debugf("Get ListObjectsV2Pages: %v", loi)
+	m.log.Debugf("Get ListObjectsV2Pages: %v", loi)
 	m.listObjectsV2Input = append(m.listObjectsV2Input, loi)
 
 	for i := m.count; i < len(m.listObjectsV2Outputs); i++ {
@@ -131,12 +131,9 @@ func (m *mockS3Client) ListObjectsV2Pages(loi *s3.ListObjectsV2Input, fn func(p 
 	return m.s3error
 }
 
-func init() {
-	logger.InitLogger("test-generic-rw-s3", "debug")
-}
-
 func TestWritingToS3(t *testing.T) {
-	w, s := getWriter()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	w, s := getWriter(log)
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
@@ -156,18 +153,19 @@ func TestWritingToS3(t *testing.T) {
 }
 
 func TestWritingToS3WithTransactionID(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	r := newRequest("PUT", "https://url", "Some body")
 	r.Header.Set(transactionid.TransactionIDHeader, expectedTransactionId)
 	mw := &mockWriter{}
 	mr := &mockReader{}
 	resWriter := httptest.NewRecorder()
-	handler := NewWriterHandler(mw, mr)
+	handler := NewWriterHandler(mw, mr, log)
 
 	handler.HandleWrite(resWriter, r)
 
 	assert.Equal(t, expectedTransactionId, mw.tid)
 
-	w, s := getWriter()
+	w, s := getWriter(log)
 
 	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid, false)
 
@@ -176,17 +174,18 @@ func TestWritingToS3WithTransactionID(t *testing.T) {
 }
 
 func TestWritingToS3WithNewTransactionID(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	r := newRequest("PUT", "https://url", "Some body")
 	mw := &mockWriter{}
 	mr := &mockReader{}
 	resWriter := httptest.NewRecorder()
-	handler := NewWriterHandler(mw, mr)
+	handler := NewWriterHandler(mw, mr, log)
 
 	handler.HandleWrite(resWriter, r)
 
 	assert.Equal(t, 14, len(mw.tid))
 
-	w, s := getWriter()
+	w, s := getWriter(log)
 
 	_, err := w.Write(expectedUUID, &[]byte{}, "", mw.tid, false)
 
@@ -195,7 +194,8 @@ func TestWritingToS3WithNewTransactionID(t *testing.T) {
 }
 
 func TestWritingToS3WithNoContentType(t *testing.T) {
-	w, s := getWriter()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	w, s := getWriter(log)
 	p := []byte("PAYLOAD")
 	var err error
 	_, err = w.Write(expectedUUID, &p, "", expectedTransactionId, false)
@@ -214,7 +214,8 @@ func TestWritingToS3WithNoContentType(t *testing.T) {
 }
 
 func TestWritingToS3WithOnlyUpdatesAllowed_SuccessWhenHashIsOutOfDate(t *testing.T) {
-	w, s := getWriterOnlyUpdates("0")
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	w, s := getWriterOnlyUpdates("0", log)
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
@@ -235,7 +236,8 @@ func TestWritingToS3WithOnlyUpdatesAllowed_SuccessWhenHashIsOutOfDate(t *testing
 }
 
 func TestWritingToS3WithOnlyUpdatesAllowed_ObjectHasNoCurrentObjectHash(t *testing.T) {
-	w, s := getWriterOnlyUpdates("")
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	w, s := getWriterOnlyUpdates("", log)
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
@@ -256,12 +258,13 @@ func TestWritingToS3WithOnlyUpdatesAllowed_ObjectHasNoCurrentObjectHash(t *testi
 }
 
 func TestWritingToS3WithOnlyUpdatesAllowed_NoObjectWrittenForObjectWithExistingHash(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	var err error
 	p := []byte("PAYLOAD")
 	existingHash, err := hashstructure.Hash(&p, nil)
 	assert.NoError(t, err)
 	existingHashString := fmt.Sprint(existingHash)
-	w, s := getWriterOnlyUpdates(existingHashString)
+	w, s := getWriterOnlyUpdates(existingHashString, log)
 	ct := expectedContentType
 	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, false)
 	assert.NoError(t, err)
@@ -270,12 +273,13 @@ func TestWritingToS3WithOnlyUpdatesAllowed_NoObjectWrittenForObjectWithExistingH
 }
 
 func TestWritingToS3WithOnlyUpdatesAllowed_ObjectWrittenForObjectWithExistingHashWithIgnoreHash(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	var err error
 	p := []byte("PAYLOAD")
 	existingHash, err := hashstructure.Hash(&p, nil)
 	assert.NoError(t, err)
 	existingHashString := fmt.Sprint(existingHash)
-	w, s := getWriterOnlyUpdates(existingHashString)
+	w, s := getWriterOnlyUpdates(existingHashString, log)
 	ct := expectedContentType
 	writeStatus, err := w.Write(expectedUUID, &p, ct, expectedTransactionId, true)
 	assert.NoError(t, err)
@@ -294,7 +298,8 @@ func TestWritingToS3WithOnlyUpdatesAllowed_ObjectWrittenForObjectWithExistingHas
 }
 
 func TestWritingToS3WithOnlyUpdatesAllowed_SuccessForNewObject(t *testing.T) {
-	w, s := getWriterNoExistingObject()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	w, s := getWriterNoExistingObject(log)
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	var err error
@@ -315,7 +320,8 @@ func TestWritingToS3WithOnlyUpdatesAllowed_SuccessForNewObject(t *testing.T) {
 }
 
 func TestFailingToWriteToS3(t *testing.T) {
-	w, s := getWriter()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	w, s := getWriter(log)
 	p := []byte("PAYLOAD")
 	ct := expectedContentType
 	s.s3error = errors.New("S3 error")
@@ -325,7 +331,8 @@ func TestFailingToWriteToS3(t *testing.T) {
 }
 
 func TestGetFromS3(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.payload = "PAYLOAD"
 	s.ct = expectedContentType
 	b, i, ct, err := r.Get(expectedUUID)
@@ -339,7 +346,8 @@ func TestGetFromS3(t *testing.T) {
 	assert.Equal(t, "PAYLOAD0", string(p[:]))
 }
 func TestGetFromS3NoPrefix(t *testing.T) {
-	r, s := getReaderNoPrefix()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReaderNoPrefix(log)
 	s.payload = "PAYLOAD"
 	s.ct = expectedContentType
 	b, i, ct, err := r.Get(expectedUUID)
@@ -354,7 +362,8 @@ func TestGetFromS3NoPrefix(t *testing.T) {
 }
 
 func TestGetFromS3WhenNoSuchKey(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.s3error = awserr.New("NoSuchKey", "message", errors.New("Some error"))
 	s.payload = "PAYLOAD"
 	b, i, ct, err := r.Get(expectedUUID)
@@ -365,7 +374,8 @@ func TestGetFromS3WhenNoSuchKey(t *testing.T) {
 }
 
 func TestGetFromS3WithUnknownError(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.s3error = awserr.New("I don't know", "message", errors.New("Some error"))
 	s.payload = "ERROR PAYLOAD"
 	b, i, ct, err := r.Get(expectedUUID)
@@ -377,7 +387,8 @@ func TestGetFromS3WithUnknownError(t *testing.T) {
 }
 
 func TestGetFromS3WithNoneAWSError(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.s3error = errors.New("Some error")
 	s.payload = "ERROR PAYLOAD"
 	b, i, ct, err := r.Get(expectedUUID)
@@ -389,7 +400,8 @@ func TestGetFromS3WithNoneAWSError(t *testing.T) {
 }
 
 func TestGetCountFromS3(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	lo1 := generateKeys(100, false)
 	lo2 := generateKeys(1, false)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
@@ -424,7 +436,8 @@ func generateKeys(count int, addIgnoredKeys bool) s3.ListObjectsV2Output {
 }
 
 func TestGetCountFromS3WithoutPrefix(t *testing.T) {
-	r, s := getReaderNoPrefix()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReaderNoPrefix(log)
 	lo1 := generateKeys(100, false)
 	lo2 := generateKeys(1, false)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
@@ -439,7 +452,8 @@ func TestGetCountFromS3WithoutPrefix(t *testing.T) {
 }
 
 func TestGetCountFromS3Errors(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.s3error = errors.New("Some error")
 	_, err := r.Count()
 	assert.Error(t, err)
@@ -447,9 +461,10 @@ func TestGetCountFromS3Errors(t *testing.T) {
 }
 
 func BenchmarkS3Reader_Count(b *testing.B) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	for n := 0; n < b.N; n++ {
 		b.StopTimer()
-		r, s := getReaderNoPrefix()
+		r, s := getReaderNoPrefix(log)
 		t := 1000
 		for i := 0; i < t; i++ {
 			var lo s3.ListObjectsV2Output
@@ -463,11 +478,12 @@ func BenchmarkS3Reader_Count(b *testing.B) {
 	}
 }
 func BenchmarkS3QProcessor_ProcessMsg(b *testing.B) {
-	m := getLargeKMsg()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	m := getLargeKMsg(log)
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		mw := &mockWriter{}
-		qp := NewQProcessor(mw)
+		qp := NewQProcessor(mw, log)
 
 		qp.ProcessMsg(m)
 
@@ -478,7 +494,7 @@ func BenchmarkS3QProcessor_ProcessMsg(b *testing.B) {
 	}
 }
 
-func getLargeKMsg() consumer.Message {
+func getLargeKMsg(log *logger.UPPLogger) kafka.FTMessage {
 	buf := new(bytes.Buffer)
 	je := json.NewEncoder(buf)
 	bd := make([]byte, 16777216)
@@ -500,14 +516,15 @@ func getLargeKMsg() consumer.Message {
 		"X-Request-Id": expectedTransactionId,
 		"Content-Type": expectedContentType,
 	}
-	return consumer.Message{
+	return kafka.FTMessage{
 		Headers: h,
 		Body:    buf.String(),
 	}
 }
 
 func TestGetIdsFromS3(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		{KeyCount: aws.Int64(1)},
 		{
@@ -549,7 +566,8 @@ func TestGetIdsFromS3(t *testing.T) {
 }
 
 func TestGetIdsFromS3NoPrefix(t *testing.T) {
-	r, s := getReaderNoPrefix()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReaderNoPrefix(log)
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		{KeyCount: aws.Int64(1)},
 		{
@@ -591,7 +609,8 @@ func TestGetIdsFromS3NoPrefix(t *testing.T) {
 }
 
 func TestGetIdsFromS3Fails(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.s3error = errors.New("Some error")
 	_, err := r.Ids()
 	assert.Error(t, err)
@@ -599,7 +618,8 @@ func TestGetIdsFromS3Fails(t *testing.T) {
 }
 
 func TestReaderHandler_HandleGetAllOK(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.payload = "PAYLOAD"
 
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
@@ -646,7 +666,8 @@ PAYLOAD9
 }
 
 func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
-	r, s := getReaderWithMultipleWorkers()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReaderWithMultipleWorkers(log)
 	s.payload = "PAYLOAD"
 	s.listObjectsV2Outputs = []*s3.ListObjectsV2Output{
 		{KeyCount: aws.Int64(1)},
@@ -675,7 +696,8 @@ func getListObjectsV2Output(keyCount int64, start int) *s3.ListObjectsV2Output {
 }
 
 func TestS3Reader_GetAllFails(t *testing.T) {
-	r, s := getReader()
+	log := logger.NewUPPLogger("processor_test", "Debug")
+	r, s := getReader(log)
 	s.s3error = errors.New("Some error")
 	_, err := r.GetAll()
 	assert.Error(t, err)
@@ -683,11 +705,12 @@ func TestS3Reader_GetAllFails(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	var w Writer
 	var s *mockS3Client
 
 	t.Run("With prefix", func(t *testing.T) {
-		w, s = getWriter()
+		w, s = getWriter(log)
 		err := w.Delete(expectedUUID, expectedTransactionId)
 		assert.NoError(t, err)
 		assert.Equal(t, "test/prefix/123e4567/e89b/12d3/a456/426655440000", *s.deleteObjectInput.Key)
@@ -695,7 +718,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("Without prefix", func(t *testing.T) {
-		w, s = getWriterNoPrefix()
+		w, s = getWriterNoPrefix(log)
 		err := w.Delete(expectedUUID, expectedTransactionId)
 		assert.NoError(t, err)
 		assert.Equal(t, "/123e4567/e89b/12d3/a456/426655440000", *s.deleteObjectInput.Key)
@@ -703,7 +726,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	t.Run("Fails", func(t *testing.T) {
-		w, s = getWriter()
+		w, s = getWriter(log)
 		s.s3error = errors.New("Some S3 error")
 		err := w.Delete(expectedUUID, expectedTransactionId)
 		assert.Error(t, err)
@@ -712,6 +735,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestS3QProcessor_ProcessMsgCorrectly(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	testCases := []struct {
 		uuid  string
 		ct    string
@@ -727,7 +751,7 @@ func TestS3QProcessor_ProcessMsgCorrectly(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("Msg with [uuid=%v, ct=%v], expect [uuid=%v, ct=%v]", tc.uuid, tc.ct, tc.wUuid, tc.wCt), func(t *testing.T) {
 			mw := &mockWriter{}
-			qp := NewQProcessor(mw)
+			qp := NewQProcessor(mw, log)
 			m := generateConsumerMessage(tc.ct, tc.uuid)
 
 			qp.ProcessMsg(m)
@@ -741,17 +765,19 @@ func TestS3QProcessor_ProcessMsgCorrectly(t *testing.T) {
 }
 
 func TestS3QProcessor_ProcessMsgNoneJsonShouldNotCallWriter(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	mw := &mockWriter{}
-	qp := NewQProcessor(mw)
+	qp := NewQProcessor(mw, log)
 	m := generateConsumerMessage(expectedContentType, expectedUUID)
 	m.Body = "none json data is here"
 	qp.ProcessMsg(m)
 }
 
 func TestS3QProcessor_ProcessMsgDealsWithErrorsFromWriter(t *testing.T) {
+	log := logger.NewUPPLogger("processor_test", "Debug")
 	mw := &mockWriter{writeStatus: SERVICE_UNAVAILABLE}
 	mw.returnError = errors.New("Some error")
-	qp := NewQProcessor(mw)
+	qp := NewQProcessor(mw, log)
 	m := generateConsumerMessage(expectedContentType, expectedUUID)
 	qp.ProcessMsg(m)
 	assert.Equal(t, expectedUUID, mw.uuid)
@@ -761,7 +787,7 @@ func TestS3QProcessor_ProcessMsgDealsWithErrorsFromWriter(t *testing.T) {
 	assert.Equal(t, m.Body, mw.payload)
 }
 
-func generateConsumerMessage(ct string, cid string) consumer.Message {
+func generateConsumerMessage(ct string, cid string) kafka.FTMessage {
 	h := map[string]string{
 		"Message-Id":   expectedMessageID,
 		"X-Request-Id": expectedTransactionId,
@@ -770,7 +796,7 @@ func generateConsumerMessage(ct string, cid string) consumer.Message {
 		h["Content-Type"] = ct
 	}
 
-	return consumer.Message{
+	return kafka.FTMessage{
 		Body: fmt.Sprintf(`{
 		"uuid": "%v",
 		"random":"one",
@@ -780,47 +806,47 @@ func generateConsumerMessage(ct string, cid string) consumer.Message {
 	}
 }
 
-func getReader() (Reader, *mockS3Client) {
-	s := &mockS3Client{}
-	return NewS3Reader(s, "testBucket", "test/prefix", 1), s
+func getReader(log *logger.UPPLogger) (Reader, *mockS3Client) {
+	s := &mockS3Client{log: log}
+	return NewS3Reader(s, "testBucket", "test/prefix", 1, log), s
 }
 
-func getReaderWithMultipleWorkers() (Reader, *mockS3Client) {
-	s := &mockS3Client{}
-	return NewS3Reader(s, "testBucket", "test/prefix", 15), s
+func getReaderWithMultipleWorkers(log *logger.UPPLogger) (Reader, *mockS3Client) {
+	s := &mockS3Client{log: log}
+	return NewS3Reader(s, "testBucket", "test/prefix", 15, log), s
 }
 
-func getReaderNoPrefix() (Reader, *mockS3Client) {
-	s := &mockS3Client{}
-	return NewS3Reader(s, "testBucket", "", 1), s
+func getReaderNoPrefix(log *logger.UPPLogger) (Reader, *mockS3Client) {
+	s := &mockS3Client{log: log}
+	return NewS3Reader(s, "testBucket", "", 1, log), s
 }
 
-func getWriter() (Writer, *mockS3Client) {
-	s := &mockS3Client{}
+func getWriter(log *logger.UPPLogger) (Writer, *mockS3Client) {
+	s := &mockS3Client{log: log}
 	s.headObjectOutput = &s3.HeadObjectOutput{}
-	return NewS3Writer(s, "testBucket", "test/prefix", false), s
+	return NewS3Writer(s, "testBucket", "test/prefix", false, log), s
 }
 
-func getWriterNoPrefix() (Writer, *mockS3Client) {
-	s := &mockS3Client{}
+func getWriterNoPrefix(log *logger.UPPLogger) (Writer, *mockS3Client) {
+	s := &mockS3Client{log: log}
 	s.headObjectOutput = &s3.HeadObjectOutput{}
-	return NewS3Writer(s, "testBucket", "", true), s
+	return NewS3Writer(s, "testBucket", "", true, log), s
 }
 
-func getWriterOnlyUpdates(currentHash string) (Writer, *mockS3Client) {
-	s := &mockS3Client{}
+func getWriterOnlyUpdates(currentHash string, log *logger.UPPLogger) (Writer, *mockS3Client) {
+	s := &mockS3Client{log: log}
 	metadata := make(map[string]*string)
 	if currentHash != "" {
 		metadata["Current-Object-Hash"] = &currentHash
 	}
 	s.headObjectOutput = &s3.HeadObjectOutput{Metadata: metadata}
-	return NewS3Writer(s, "testBucket", "test/prefix", true), s
+	return NewS3Writer(s, "testBucket", "test/prefix", true, log), s
 }
 
-func getWriterNoExistingObject() (Writer, *mockS3Client) {
-	s := &mockS3Client{}
+func getWriterNoExistingObject(log *logger.UPPLogger) (Writer, *mockS3Client) {
+	s := &mockS3Client{log: log}
 	s.headObjectOutput = &s3.HeadObjectOutput{}
 
 	s.notFoundError = awserr.New("NotFound", "Object not found", errors.New("some error"))
-	return NewS3Writer(s, "testBucket", "test/prefix", true), s
+	return NewS3Writer(s, "testBucket", "test/prefix", true, log), s
 }

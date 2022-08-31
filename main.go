@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Financial-Times/generic-rw-s3/service"
-	"github.com/Financial-Times/go-logger"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	"github.com/Financial-Times/go-logger/v2"
+	"github.com/Financial-Times/kafka-client-go/v3"
 	"github.com/aws/aws-sdk-go/aws"
 	credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	spareWorkers = 10 // Workers for things like health check, gtg, count, etc...
+	spareWorkers   = 10 // Workers for things like health check, gtg, count, etc...
+	serviceName    = "generic-rw-s3"
+	appDescription = "A RESTful API for writing data to S3"
 )
 
 func main() {
-	app := cli.App("generic-rw-s3", "A RESTful API for writing data to S3")
+	app := cli.App(serviceName, appDescription)
 
 	appName := app.String(cli.StringOpt{
 		Name:   "app-name",
@@ -77,37 +79,37 @@ func main() {
 		EnvVar: "WORKERS",
 	})
 
-	sourceAddresses := app.Strings(cli.StringsOpt{
-		Name:   "source-addresses",
-		Value:  []string{},
-		Desc:   "Addresses used by the queue consumer to connect to the queue",
-		EnvVar: "SRC_ADDR",
+	kafkaAddress := app.String(cli.StringOpt{
+		Name:   "kafka-address",
+		Value:  "kafka:9029",
+		Desc:   "Address to connect to Kafka MSK",
+		EnvVar: "KAFKA_ADDRESS",
 	})
 
-	sourceGroup := app.String(cli.StringOpt{
-		Name:   "source-group",
+	consumerLagTolerance := app.Int(cli.IntOpt{
+		Name:   "consumer-lag-tolerance",
+		Value:  120,
+		Desc:   "Kafka lag tolerance",
+		EnvVar: "KAFKA_LAG_TOLERANCE",
+	})
+
+	consumerGroup := app.String(cli.StringOpt{
+		Name:   "consumer-group",
 		Value:  "",
 		Desc:   "Group used to read the messages from the queue",
-		EnvVar: "SRC_GROUP",
+		EnvVar: "CONSUMER_GROUP",
 	})
 
-	sourceTopic := app.String(cli.StringOpt{
-		Name:   "source-topic",
+	consumerTopic := app.String(cli.StringOpt{
+		Name:   "consumer-topic",
 		Value:  "",
 		Desc:   "The topic to read the messages from",
-		EnvVar: "SRC_TOPIC",
-	})
-
-	sourceConcurrentProcessing := app.Bool(cli.BoolOpt{
-		Name:   "source-concurrent-processing",
-		Value:  false,
-		Desc:   "Whether the consumer uses concurrent processing for the messages",
-		EnvVar: "SRC_CONCURRENT_PROCESSING",
+		EnvVar: "CONSUMER_TOPIC",
 	})
 
 	logLevel := app.String(cli.StringOpt{
 		Name:   "log-level",
-		Value:  "info",
+		Value:  "INFO",
 		Desc:   "Level of required logging",
 		EnvVar: "LOG_LEVEL",
 	})
@@ -125,23 +127,23 @@ func main() {
 		EnvVar: "REQUEST_LOGGING_ENABLED",
 	})
 
-	app.Action = func() {
+	log := logger.NewUPPLogger(serviceName, *logLevel)
 
-		qConf := consumer.QueueConfig{
-			Addrs:                *sourceAddresses,
-			Group:                *sourceGroup,
-			Topic:                *sourceTopic,
-			ConcurrentProcessing: *sourceConcurrentProcessing,
+	app.Action = func() {
+		consumerConfig := kafka.ConsumerConfig{
+			BrokersConnectionString: *kafkaAddress,
+			ConsumerGroup:           *consumerGroup,
+			ConnectionRetryInterval: time.Minute,
 		}
-		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
+		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, *consumerTopic, consumerLagTolerance, consumerConfig, *onlyUpdatesEnabled, *requestLoggingEnabled, log)
 	}
 
-	logger.InitLogger(*appName, *logLevel)
-	logger.Infof("Application started with args %s", os.Args)
+	log.Infof("Application started with args %s", os.Args)
+
 	app.Run(os.Args)
 }
 
-func runServer(appName string, port string, appSystemCode string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
+func runServer(appName string, port string, appSystemCode string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, readTopic string, consumerLagTolerance *int, qConf kafka.ConsumerConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool, log *logger.UPPLogger) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -177,32 +179,35 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 
 	sess, err := session.NewSession(cfg)
 	if err != nil {
-		logger.Fatalf("Failed to create AWS session: %v", err)
+		log.WithError(err).Fatal("Failed to create AWS session")
 	}
 	svc := s3.New(sess)
 
-	w := service.NewS3Writer(svc, bucketName, bucketPrefix, onlyUpdatesEnabled)
-	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks))
+	w := service.NewS3Writer(svc, bucketName, bucketPrefix, onlyUpdatesEnabled, log)
+	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks), log)
 
-	wh := service.NewWriterHandler(w, r)
-	rh := service.NewReaderHandler(r)
+	wh := service.NewWriterHandler(w, r, log)
+	rh := service.NewReaderHandler(r, log)
 
 	servicesRouter := mux.NewRouter()
 
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, appSystemCode, requestLoggingEnabled)
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
 
-	qp := service.NewQProcessor(w)
+	log.Infof("listening on %v", port)
 
-	logger.Infof("listening on %v", port)
+	var consumer *kafka.Consumer
+	if readTopic != "" {
+		qp := service.NewQProcessor(w, log)
+		topics := []*kafka.Topic{kafka.NewTopic(readTopic, kafka.WithLagTolerance(int64(*consumerLagTolerance)))}
+		consumer = kafka.NewConsumer(qConf, topics, log)
 
-	if qConf.Topic != "" {
-		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
-		go c.Start()
-		defer c.Stop()
+		go consumer.Start(qp.ProcessMsg)
+		defer consumer.Close()
 	}
+	healthcheck := service.NewHealthCheck(consumer, svc, appName, appSystemCode, bucketName, log)
+	service.AddAdminHandlers(servicesRouter, requestLoggingEnabled, log, healthcheck)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		logger.Fatalf("Unable to start server: %v", err)
+		log.WithError(err).Fatal("Unable to start server.")
 	}
 
 }
