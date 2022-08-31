@@ -7,6 +7,7 @@ import (
 	"time"
 
 	fthealth "github.com/Financial-Times/go-fthealth/v1_1"
+	"github.com/Financial-Times/go-logger/v2"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	"github.com/Financial-Times/service-status-go/gtg"
 	httpStatus "github.com/Financial-Times/service-status-go/httphandlers"
@@ -16,14 +17,13 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/rcrowley/go-metrics"
-	log "github.com/sirupsen/logrus"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, appSystemCode string, requestLoggingEnabled bool) {
-	c := checker{svc, bucketName}
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, appSystemCode string, requestLoggingEnabled bool, log *logger.UPPLogger, consumerHealthcheck messageConsumerHealthcheck) {
+	c := checker{svc, bucketName, log, consumerHealthcheck}
 	var monitoringRouter http.Handler = servicesRouter
 	if requestLoggingEnabled {
-		monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.StandardLogger(), monitoringRouter)
+		monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.Logger, monitoringRouter)
 		monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
 	}
 
@@ -46,6 +46,21 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 						TechnicalSummary: `Can not access S3 bucket.`,
 						Checker:          c.healthCheck,
 					},
+					{
+						BusinessImpact:   "",
+						Name:             "Read Message Queue Reachable",
+						PanicGuide:       "https://runbooks.ftops.tech/" + appSystemCode,
+						TechnicalSummary: "Read message queue is not reachable/healthy",
+						Severity:         3,
+						Checker:          c.consumerConnectivityCheck,
+					},
+					{
+						BusinessImpact: "",
+						Name:           "Read Message Queue Is Not Lagging",
+						PanicGuide:     "https://runbooks.ftops.tech/" + appSystemCode,
+						Severity:       3,
+						Checker:        c.consumerLagCheck,
+					},
 				},
 			},
 			Timeout: 10 * time.Second,
@@ -58,7 +73,30 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 
 type checker struct {
 	s3iface.S3API
-	bucketName string
+	bucketName          string
+	log                 *logger.UPPLogger
+	consumerHealthcheck messageConsumerHealthcheck
+}
+
+type messageConsumerHealthcheck interface {
+	ConnectivityCheck() error
+	MonitorCheck() error
+}
+
+func (c *checker) consumerConnectivityCheck() (string, error) {
+	err := c.consumerHealthcheck.ConnectivityCheck()
+	if err != nil {
+		return "", err
+	}
+	return "ok", nil
+}
+
+func (c *checker) consumerLagCheck() (string, error) {
+	err := c.consumerHealthcheck.MonitorCheck()
+	if err != nil {
+		return "", err
+	}
+	return "ok", err
 }
 
 func (c *checker) healthCheck() (string, error) {
@@ -67,7 +105,7 @@ func (c *checker) healthCheck() (string, error) {
 	}
 	_, err := c.HeadBucket(params)
 	if err != nil {
-		log.Errorf("Got error running S3 health check, %v", err.Error())
+		c.log.Errorf("Got error running S3 health check, %v", err.Error())
 		return "Can not perform check on S3 bucket", err
 	}
 	return "Access to S3 bucket ok", err
@@ -75,7 +113,7 @@ func (c *checker) healthCheck() (string, error) {
 
 func (c *checker) gtgCheckHandler() gtg.Status {
 	if _, err := c.healthCheck(); err != nil {
-		log.Info("Healthcheck failed, gtg is bad.")
+		c.log.Info("Healthcheck failed, gtg is bad.")
 		return gtg.Status{GoodToGo: false, Message: "Head request to S3 failed"}
 	}
 	return gtg.Status{GoodToGo: true, Message: "OK"}

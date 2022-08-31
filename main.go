@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Financial-Times/generic-rw-s3/service"
-	"github.com/Financial-Times/go-logger"
-	"github.com/Financial-Times/message-queue-gonsumer/consumer"
+	"github.com/Financial-Times/go-logger/v2"
+	"github.com/Financial-Times/kafka-client-go/v3"
 	"github.com/aws/aws-sdk-go/aws"
 	credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	spareWorkers = 10 // Workers for things like health check, gtg, count, etc...
+	spareWorkers   = 10 // Workers for things like health check, gtg, count, etc...
+	serviceName    = "generic-rw-s3"
+	appDescription = "A RESTful API for writing data to S3"
 )
 
 func main() {
-	app := cli.App("generic-rw-s3", "A RESTful API for writing data to S3")
+	app := cli.App(serviceName, appDescription)
 
 	appName := app.String(cli.StringOpt{
 		Name:   "app-name",
@@ -77,11 +79,18 @@ func main() {
 		EnvVar: "WORKERS",
 	})
 
-	sourceAddresses := app.Strings(cli.StringsOpt{
-		Name:   "source-addresses",
-		Value:  []string{},
-		Desc:   "Addresses used by the queue consumer to connect to the queue",
-		EnvVar: "SRC_ADDR",
+	kafkaAddress := app.String(cli.StringOpt{
+		Name:   "kafkaAddress",
+		Value:  "",
+		Desc:   "Address to connect to kafka",
+		EnvVar: "KAFKA_ADDRESS",
+	})
+
+	consumerLagTolerance := app.Int(cli.IntOpt{
+		Name:   "consumerLagTolerance",
+		Value:  120,
+		Desc:   "Kafka lag tolerance",
+		EnvVar: "KAFKA_LAG_TOLERANCE",
 	})
 
 	sourceGroup := app.String(cli.StringOpt{
@@ -96,13 +105,6 @@ func main() {
 		Value:  "",
 		Desc:   "The topic to read the messages from",
 		EnvVar: "SRC_TOPIC",
-	})
-
-	sourceConcurrentProcessing := app.Bool(cli.BoolOpt{
-		Name:   "source-concurrent-processing",
-		Value:  false,
-		Desc:   "Whether the consumer uses concurrent processing for the messages",
-		EnvVar: "SRC_CONCURRENT_PROCESSING",
 	})
 
 	logLevel := app.String(cli.StringOpt{
@@ -127,21 +129,20 @@ func main() {
 
 	app.Action = func() {
 
-		qConf := consumer.QueueConfig{
-			Addrs:                *sourceAddresses,
-			Group:                *sourceGroup,
-			Topic:                *sourceTopic,
-			ConcurrentProcessing: *sourceConcurrentProcessing,
+		log := logger.NewUPPLogger(serviceName, *logLevel)
+
+		consumerConfig := kafka.ConsumerConfig{
+			BrokersConnectionString: *kafkaAddress,
+			ConsumerGroup:           *sourceGroup,
+			ConnectionRetryInterval: time.Minute,
 		}
-		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, qConf, *onlyUpdatesEnabled, *requestLoggingEnabled)
+		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, sourceTopic, consumerLagTolerance, consumerConfig, *onlyUpdatesEnabled, *requestLoggingEnabled, log)
 	}
 
-	logger.InitLogger(*appName, *logLevel)
-	logger.Infof("Application started with args %s", os.Args)
 	app.Run(os.Args)
 }
 
-func runServer(appName string, port string, appSystemCode string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, qConf consumer.QueueConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool) {
+func runServer(appName string, port string, appSystemCode string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, readTopic *string, consumerLagTolerance *int, qConf kafka.ConsumerConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool, log *logger.UPPLogger) {
 	hc := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -177,32 +178,36 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 
 	sess, err := session.NewSession(cfg)
 	if err != nil {
-		logger.Fatalf("Failed to create AWS session: %v", err)
+		log.WithError(err).Fatal("Failed to create AWS session")
 	}
 	svc := s3.New(sess)
 
-	w := service.NewS3Writer(svc, bucketName, bucketPrefix, onlyUpdatesEnabled)
-	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks))
+	w := service.NewS3Writer(svc, bucketName, bucketPrefix, onlyUpdatesEnabled, log)
+	r := service.NewS3Reader(svc, bucketName, bucketPrefix, int16(wrks), log)
 
-	wh := service.NewWriterHandler(w, r)
-	rh := service.NewReaderHandler(r)
+	wh := service.NewWriterHandler(w, r, log)
+	rh := service.NewReaderHandler(r, log)
 
 	servicesRouter := mux.NewRouter()
 
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, appSystemCode, requestLoggingEnabled)
 	service.Handlers(servicesRouter, wh, rh, resourcePath)
 
-	qp := service.NewQProcessor(w)
+	qp := service.NewQProcessor(w, log)
 
-	logger.Infof("listening on %v", port)
+	log.Infof("listening on %v", port)
 
-	if qConf.Topic != "" {
-		c := consumer.NewConsumer(qConf, qp.ProcessMsg, hc)
-		go c.Start()
-		defer c.Stop()
+	var consumer *kafka.Consumer
+	if readTopic != nil {
+
+		topics := []*kafka.Topic{kafka.NewTopic(*readTopic, kafka.WithLagTolerance(int64(*consumerLagTolerance)))}
+
+		consumer = kafka.NewConsumer(qConf, topics, log)
+		go consumer.Start(qp.ProcessMsg)
+		defer consumer.Close()
 	}
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, appSystemCode, requestLoggingEnabled, log, consumer)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		logger.Fatalf("Unable to start server: %v", err)
+		log.WithError(err).Fatal("Unable to start server.")
 	}
 
 }
