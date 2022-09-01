@@ -19,3 +19,5 @@ env:
     value: ConceptSuggestions
   - name: SRC_CONCURRENT_PROCESSING
     value: "true"
+
+serviceAccountName: eksctl-upp-generic-rw-s3-serviceaccount

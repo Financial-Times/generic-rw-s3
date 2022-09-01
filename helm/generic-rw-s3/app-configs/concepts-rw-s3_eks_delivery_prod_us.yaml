@@ -10,3 +10,5 @@ bucket:
 env:
   - name: RESOURCE_PATH
     value: "concepts"
+
+serviceAccountName: eksctl-upp-concepts-rw-s3-serviceaccount
