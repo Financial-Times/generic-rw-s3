@@ -109,7 +109,7 @@ func main() {
 
 	logLevel := app.String(cli.StringOpt{
 		Name:   "log-level",
-		Value:  "info",
+		Value:  "INFO",
 		Desc:   "Level of required logging",
 		EnvVar: "LOG_LEVEL",
 	})
