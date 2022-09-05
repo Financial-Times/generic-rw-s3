@@ -207,7 +207,7 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 		go consumer.Start(qp.ProcessMsg)
 		defer consumer.Close()
 	}
-	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, appSystemCode, requestLoggingEnabled, log, consumer)
+	service.AddAdminHandlers(servicesRouter, svc, bucketName, appName, appSystemCode, requestLoggingEnabled, log)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.WithError(err).Fatal("Unable to start server.")
 	}

@@ -19,8 +19,8 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
-func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, appSystemCode string, requestLoggingEnabled bool, log *logger.UPPLogger, consumerHealthcheck messageConsumerHealthcheck) {
-	c := checker{svc, bucketName, log, consumerHealthcheck}
+func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName string, appName string, appSystemCode string, requestLoggingEnabled bool, log *logger.UPPLogger) {
+	c := checker{svc, bucketName, log}
 	var monitoringRouter http.Handler = servicesRouter
 	if requestLoggingEnabled {
 		monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.Logger, monitoringRouter)
@@ -58,30 +58,8 @@ func AddAdminHandlers(servicesRouter *mux.Router, svc s3iface.S3API, bucketName 
 
 type checker struct {
 	s3iface.S3API
-	bucketName          string
-	log                 *logger.UPPLogger
-	consumerHealthcheck messageConsumerHealthcheck
-}
-
-type messageConsumerHealthcheck interface {
-	ConnectivityCheck() error
-	MonitorCheck() error
-}
-
-func (c *checker) consumerConnectivityCheck() (string, error) {
-	err := c.consumerHealthcheck.ConnectivityCheck()
-	if err != nil {
-		return "", err
-	}
-	return "ok", nil
-}
-
-func (c *checker) consumerLagCheck() (string, error) {
-	err := c.consumerHealthcheck.MonitorCheck()
-	if err != nil {
-		return "", err
-	}
-	return "ok", err
+	bucketName string
+	log        *logger.UPPLogger
 }
 
 func (c *checker) healthCheck() (string, error) {

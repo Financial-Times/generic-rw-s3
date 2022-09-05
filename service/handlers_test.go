@@ -22,34 +22,11 @@ const (
 	ExpectedResourcePath = "bob"
 )
 
-type mockConsumerInstance struct {
-	isConnectionHealthy bool
-	isNotLagging        bool
-}
-
-func (c *mockConsumerInstance) ConnectivityCheck() error {
-	if c.isConnectionHealthy {
-		return nil
-	}
-	return errors.New("error connecting to the consumer queue")
-}
-
-func (c *mockConsumerInstance) MonitorCheck() error {
-	if c.isNotLagging {
-		return nil
-	}
-	return errors.New("error kafka client is lagging")
-}
-
 func TestAddAdminHandlers(t *testing.T) {
 	log := logger.NewUPPLogger("handlers_test", "Debug")
 	s := &mockS3Client{log: log}
-	c := &mockConsumerInstance{
-		isConnectionHealthy: true,
-		isNotLagging:        true,
-	}
 	r := mux.NewRouter()
-	AddAdminHandlers(r, s, "bucketName", "generic-rw-s3", "generic-rw-s3", false, log, c)
+	AddAdminHandlers(r, s, "bucketName", "generic-rw-s3", "generic-rw-s3", false, log)
 
 	t.Run(httpStatus.PingPath, func(t *testing.T) {
 		assertRequestAndResponse(t, httpStatus.PingPath, 200, "pong")
