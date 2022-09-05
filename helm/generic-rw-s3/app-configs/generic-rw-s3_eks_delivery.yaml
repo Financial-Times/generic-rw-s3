@@ -13,12 +13,10 @@ env:
       configMapKeyRef:
         name: global-config
         key: msk.kafka.broker.url
-  - name: SRC_GROUP
+  - name: CONSUMER_GROUP
     value: generic-rw-s3-ConceptSuggestions
-  - name: SRC_TOPIC
+  - name: CONSUMER_TOPIC
     value: ConceptSuggestions
-  - name: SRC_CONCURRENT_PROCESSING
-    value: "true"
   - name: KAFKA_LAG_TOLERANCE
     value: "{{ .Values.env.KAFKA_LAG_TOLERANCE }}"
   - name: LOG_LEVEL

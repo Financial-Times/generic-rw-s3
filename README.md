@@ -13,7 +13,7 @@ An API for reading/writing generic payloads up to S3. It can be setup to read th
 ## Build and Test
 
 ```sh
-git clone github.com/Financial-Times/generic-rw-s3
+git clone github.com/Financial-Times/generic-rw-s3  
 cd ./generic-rw-s3
 go build -mod=readonly
 go test -mod=readonly -race ./...
@@ -48,12 +48,11 @@ There are optional arguments as well:
 ```sh
 export|set BUCKET_PREFIX="bucketPrefix" # adds a prefix folder to all items uploaded
 export|set WORKERS=10 # Number of concurrent downloads when downloading all items. Default is 10
-export|set SRC_CONCURRENT_PROCESSING=true # Whether the consumer uses concurrent processing for the messages
 ```
 
 ### Run locally with read from kafka enabled
 
-`./generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --source-addresses="<proyx_address>" --source-group="<consumer_group>" --source-topic="<topic_to_read>"`
+`./generic-rw-s3 --port=8080 --bucketName="bucketName" --bucketPrefix="bucketPrefix" --awsRegion="eu-west-1" --kafkaAddress="<proyx_address>" --consumer-group="<consumer_group>" --source-topic="<topic_to_read>"`
 
 ### Run locally with specified resource path
 

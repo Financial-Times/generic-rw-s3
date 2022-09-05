@@ -81,8 +81,8 @@ func main() {
 
 	kafkaAddress := app.String(cli.StringOpt{
 		Name:   "kafkaAddress",
-		Value:  "",
-		Desc:   "Address to connect to kafka",
+		Value:  "kafka:9029",
+		Desc:   "Address to connect to Kafka MSK",
 		EnvVar: "KAFKA_ADDRESS",
 	})
 
@@ -93,18 +93,18 @@ func main() {
 		EnvVar: "KAFKA_LAG_TOLERANCE",
 	})
 
-	sourceGroup := app.String(cli.StringOpt{
-		Name:   "source-group",
+	consumerGroup := app.String(cli.StringOpt{
+		Name:   "consumer-group",
 		Value:  "",
 		Desc:   "Group used to read the messages from the queue",
-		EnvVar: "SRC_GROUP",
+		EnvVar: "CONSUMER_GROUP",
 	})
 
-	sourceTopic := app.String(cli.StringOpt{
+	consumerTopic := app.String(cli.StringOpt{
 		Name:   "source-topic",
 		Value:  "",
 		Desc:   "The topic to read the messages from",
-		EnvVar: "SRC_TOPIC",
+		EnvVar: "CONSUMER_TOPIC",
 	})
 
 	logLevel := app.String(cli.StringOpt{
@@ -127,19 +127,22 @@ func main() {
 		EnvVar: "REQUEST_LOGGING_ENABLED",
 	})
 
+	log := logger.NewUPPLogger(serviceName, *logLevel)
+
 	app.Action = func() {
-
-		log := logger.NewUPPLogger(serviceName, *logLevel)
-
 		consumerConfig := kafka.ConsumerConfig{
 			BrokersConnectionString: *kafkaAddress,
-			ConsumerGroup:           *sourceGroup,
+			ConsumerGroup:           *consumerGroup,
 			ConnectionRetryInterval: time.Minute,
 		}
-		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, sourceTopic, consumerLagTolerance, consumerConfig, *onlyUpdatesEnabled, *requestLoggingEnabled, log)
+		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, consumerTopic, consumerLagTolerance, consumerConfig, *onlyUpdatesEnabled, *requestLoggingEnabled, log)
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	if err != nil {
+		log.WithError(err).Errorf("Application could not start")
+		return
+	}
 }
 
 func runServer(appName string, port string, appSystemCode string, resourcePath string, awsRegion string, bucketName string, bucketPrefix string, wrks int, readTopic *string, consumerLagTolerance *int, qConf kafka.ConsumerConfig, onlyUpdatesEnabled bool, requestLoggingEnabled bool, log *logger.UPPLogger) {
