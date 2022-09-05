@@ -8,7 +8,7 @@ bucket:
   # We have a separate bucket in each region on the cluster
   awsRegionKey: "aws.region"
 env:
-  - name: SRC_ADDR
+  - name: KAFKA_ADDRESS
     valueFrom:
       configMapKeyRef:
         name: global-config
