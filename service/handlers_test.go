@@ -26,7 +26,8 @@ func TestAddAdminHandlers(t *testing.T) {
 	log := logger.NewUPPLogger("handlers_test", "Debug")
 	s := &mockS3Client{log: log}
 	r := mux.NewRouter()
-	healthcheck := NewHealthCheck(nil, s, "generic-rw-s3", "generic-rw-s3", "bucketName", log)
+	var c = &mockConsumerInstance{}
+	healthcheck := NewHealthCheck(c, s, "generic-rw-s3", "generic-rw-s3", "bucketName", log)
 	AddAdminHandlers(r, false, log, healthcheck)
 
 	t.Run(httpStatus.PingPath, func(t *testing.T) {

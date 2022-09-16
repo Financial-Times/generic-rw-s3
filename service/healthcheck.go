@@ -2,6 +2,7 @@ package service
 
 import (
 	"net/http"
+	"reflect"
 	"time"
 
 	fthealth "github.com/Financial-Times/go-fthealth/v1_1"
@@ -39,7 +40,7 @@ func NewHealthCheck(c messageConsumerHealthcheck, s3API s3iface.S3API, appName s
 
 func (h *HealthCheck) Health() func(w http.ResponseWriter, r *http.Request) {
 	checks := []fthealth.Check{h.accessS3bucketCheck()}
-	if h.consumer != nil {
+	if !reflect.ValueOf(h.consumer).IsNil() {
 		checks = append(checks, h.consumerHealthCheck(), h.consumerLagCheck())
 	}
 	hc := fthealth.TimedHealthCheck{
@@ -128,7 +129,7 @@ func (h *HealthCheck) GTG() gtg.Status {
 		s3Check,
 	}
 
-	if h.consumer != nil {
+	if !reflect.ValueOf(h.consumer).IsNil() {
 		consumerCheck := func() gtg.Status {
 			return gtgCheck(h.consumerConnectivityChecker)
 		}

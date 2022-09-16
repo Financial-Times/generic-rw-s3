@@ -131,9 +131,10 @@ func TestGTGBrokenS3(t *testing.T) {
 func TestNilConsumer(t *testing.T) {
 	log := logger.NewUPPLogger("test-healthcheck", "INFO")
 	s := &mockS3Client{log: log}
+	c := &mockConsumerInstance{}
 	hc := &HealthCheck{
 		s3API:         s,
-		consumer:      nil,
+		consumer:      c,
 		appName:       "generic-rw-s3",
 		appSystemCode: "generic-rw-s3",
 		bucketName:    "bucketName",
