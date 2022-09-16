@@ -18,6 +18,6 @@ env:
   - name: CONSUMER_TOPIC
     value: ConceptSuggestions
   - name: KAFKA_LAG_TOLERANCE
-    value: 120
+    value: "120"
   - name: LOG_LEVEL
     value: INFO
