@@ -159,13 +159,14 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 		},
 	}
 
-	cfg := &aws.Config{
-		Region:     aws.String(awsRegion),
-		MaxRetries: aws.Int(1),
-		HTTPClient: hc,
-	}
-
+	var sess *session.Session
+	var err error
 	if os.Getenv("ENV") == "local" {
+		cfg := &aws.Config{
+			Region:     aws.String(awsRegion),
+			MaxRetries: aws.Int(1),
+			HTTPClient: hc,
+		}
 		endpoint := os.Getenv("S3_ENDPOINT")
 		if endpoint == "" {
 			endpoint = "http://localhost:8080"
@@ -175,9 +176,13 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 		cfg.Endpoint = aws.String(endpoint)
 		cfg.DisableSSL = aws.Bool(true)
 		cfg.S3ForcePathStyle = aws.Bool(true)
+
+		sess, err = session.NewSession(cfg)
+	} else {
+		// NewSession will read envvars set by the EKS Pod Identity webhook
+		sess, err = session.NewSession()
 	}
 
-	sess, err := session.NewSession(cfg)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to create AWS session")
 	}
