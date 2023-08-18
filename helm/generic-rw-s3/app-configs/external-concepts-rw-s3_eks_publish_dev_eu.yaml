@@ -1,0 +1,14 @@
+# Values used for the deployed application.
+replicaCount: 1
+service:
+  name: external-concepts-rw-s3
+  systemCode: upp-concepts-rw-s3
+bucket:
+  key: "external-concepts-rw-s3.bucket"
+  # We have a single bucket where all the clusters in all regions write
+  awsRegionKey: "external-concepts-rw-s3.bucket_region"
+env:
+  - name: RESOURCE_PATH
+    value: "concepts"
+
+serviceAccountName: eksctl-concepts-rw-s3-serviceaccount
