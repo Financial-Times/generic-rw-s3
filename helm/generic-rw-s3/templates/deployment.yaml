@@ -40,6 +40,8 @@ spec:
           value: "8080"
         - name: APP_SYSTEM_CODE
           value: {{ .Values.service.systemCode }}
+        - name: BUCKET_PREFIX
+          value: {{ .Values.service.bucketPrefix }}
         - name: AWS_REGION
           valueFrom:
             configMapKeyRef:
