@@ -741,7 +741,6 @@ PAYLOAD7
 PAYLOAD8
 PAYLOAD9
 `, string(payload[:]))
-
 }
 
 func TestReaderHandler_HandleGetAllOKSpecificDirectory(t *testing.T) {

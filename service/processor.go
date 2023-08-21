@@ -35,10 +35,10 @@ type KafkaMsg struct {
 	Id string `json:"uuid"`
 }
 
-type status int
+type Status int
 
 const (
-	UNCHANGED status = iota
+	UNCHANGED Status = iota
 	CREATED
 	UPDATED
 	INTERNAL_ERROR
@@ -195,7 +195,7 @@ func (r *S3Reader) GetAll(path string) (io.PipeReader, error) {
 	tw := int(r.workers)
 	for w := 0; w < tw; w++ {
 		wg.Add(1)
-		go r.getItemWorker(w, path, &wg, keys, items)
+		go r.getItemWorker(path, &wg, keys, items)
 	}
 
 	go r.listObjects(keys)
@@ -208,7 +208,7 @@ func (r *S3Reader) GetAll(path string) (io.PipeReader, error) {
 	return *pv, err
 }
 
-func (r *S3Reader) getItemWorker(w int, path string, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
+func (r *S3Reader) getItemWorker(path string, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
 	defer wg.Done()
 	for uuid := range keys {
 		if found, i, _, _ := r.Get(*uuid, path); found {
@@ -293,8 +293,8 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, path string, b *[]byte, contentType string, transactionId string, ignoreHash bool) (status, error)
-	Delete(uuid string, path string, transactionId string) error
+	Write(uuid string, path string, b *[]byte, contentType string, transactionID string, ignoreHash bool) (Status, error)
+	Delete(uuid string, path string, transactionID string) error
 }
 
 type S3Writer struct {
@@ -336,7 +336,7 @@ func (w *S3Writer) Delete(uuid string, path string, tid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, path string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
+func (w *S3Writer) Write(uuid string, path string, b *[]byte, ct string, tid string, ignoreHash bool) (Status, error) {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
 		Key:    aws.String(getKey(w.bucketPrefix, path, uuid)),
@@ -375,7 +375,7 @@ func (w *S3Writer) Write(uuid string, path string, b *[]byte, ct string, tid str
 	return status, nil
 }
 
-func (w *S3Writer) compareObjectToStore(uuid string, path string, b *[]byte, tid string) (status, uint64, error) {
+func (w *S3Writer) compareObjectToStore(uuid string, path string, b *[]byte, tid string) (Status, uint64, error) {
 	objectHash, err := hashstructure.Hash(&b, nil)
 	if err != nil {
 		w.log.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error whilst hashing payload: %v", &b)

@@ -94,7 +94,7 @@ func TestWriteHandlerNewContentSpecificDirectoryReturnsCreated(t *testing.T) {
 	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD", "testDirectory"))
+	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD"))
 
 	assert.Equal(t, 201, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
@@ -128,7 +128,7 @@ func TestWriteHandlerUpdateSpecificDirectoryContentReturnsOK(t *testing.T) {
 	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD", "testDirectory"))
+	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
 
 	assert.Equal(t, 200, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
@@ -162,7 +162,7 @@ func TestWriteHandlerAlreadyExistsSpecificDirectoryReturnsNotModified(t *testing
 	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD", "testDirectory"))
+	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
 
 	assert.Equal(t, 304, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
@@ -219,7 +219,7 @@ func TestWriterHandlerDeleteSpecificDirectoryReturnsOK(t *testing.T) {
 	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, newRequestWithPathParameter("DELETE", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "", "testDirectory"))
+	r.ServeHTTP(rec, newRequestWithPathParameter("DELETE", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), ""))
 	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
 	assert.Equal(t, 204, rec.Code)
 	assert.Empty(t, rec.Body.String())
@@ -375,14 +375,14 @@ func newRequestBodyFail(method, url string) *http.Request {
 	return req
 }
 
-func newRequestWithPathParameter(method, url string, body string, path string) *http.Request {
+func newRequestWithPathParameter(method, url string, body string) *http.Request {
 	var payload io.Reader
 	if body != "" {
 		payload = bytes.NewReader([]byte(body))
 	}
 	req, err := http.NewRequest(method, url, payload)
 	values := req.URL.Query()
-	values.Set("path", path)
+	values.Set("path", "testDirectory")
 	req.URL.RawQuery = values.Encode()
 	req.Header = map[string][]string{
 		"Content-Type": {ExpectedContentType},
@@ -470,7 +470,7 @@ type mockWriter struct {
 	deleteError error
 	ct          string
 	tid         string
-	writeStatus status
+	writeStatus Status
 }
 
 func (mw *mockWriter) Delete(uuid string, path string, tid string) error {
@@ -483,7 +483,7 @@ func (mw *mockWriter) Delete(uuid string, path string, tid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, path string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
+func (mw *mockWriter) Write(uuid string, path string, b *[]byte, ct string, tid string, ignoreHash bool) (Status, error) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
