@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -87,6 +86,23 @@ func TestWriteHandlerNewContentReturnsCreated(t *testing.T) {
 	assert.Equal(t, "{\"message\":\"Created concept record in store\"}", rec.Body.String())
 }
 
+func TestWriteHandlerNewContentSpecificDirectoryReturnsCreated(t *testing.T) {
+	log := logger.NewUPPLogger("handlers_test", "Debug")
+	r := mux.NewRouter()
+	mw := &mockWriter{writeStatus: CREATED}
+	mr := &mockReader{log: log}
+	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "PAYLOAD", "testDirectory"))
+
+	assert.Equal(t, 201, rec.Code)
+	assert.Equal(t, "PAYLOAD", mw.payload)
+	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
+	assert.Equal(t, ExpectedContentType, mw.ct)
+	assert.Equal(t, "{\"message\":\"Created concept record in store\"}", rec.Body.String())
+}
+
 func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	log := logger.NewUPPLogger("handlers_test", "Debug")
 	r := mux.NewRouter()
@@ -104,6 +120,23 @@ func TestWriteHandlerUpdateContentReturnsOK(t *testing.T) {
 	assert.Equal(t, "{\"message\":\"Updated concept record in store\"}", rec.Body.String())
 }
 
+func TestWriteHandlerUpdateSpecificDirectoryContentReturnsOK(t *testing.T) {
+	log := logger.NewUPPLogger("handlers_test", "Debug")
+	r := mux.NewRouter()
+	mw := &mockWriter{writeStatus: UPDATED}
+	mr := &mockReader{log: log}
+	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD", "testDirectory"))
+
+	assert.Equal(t, 200, rec.Code)
+	assert.Equal(t, "PAYLOAD", mw.payload)
+	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
+	assert.Equal(t, ExpectedContentType, mw.ct)
+	assert.Equal(t, "{\"message\":\"Updated concept record in store\"}", rec.Body.String())
+}
+
 func TestWriteHandlerAlreadyExistsReturnsNotModified(t *testing.T) {
 	log := logger.NewUPPLogger("handlers_test", "Debug")
 	r := mux.NewRouter()
@@ -113,6 +146,23 @@ func TestWriteHandlerAlreadyExistsReturnsNotModified(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD"))
+
+	assert.Equal(t, 304, rec.Code)
+	assert.Equal(t, "PAYLOAD", mw.payload)
+	assert.Equal(t, "89d15f70-640d-11e4-9803-0800200c9a66", mw.uuid)
+	assert.Equal(t, ExpectedContentType, mw.ct)
+	assert.Equal(t, "", rec.Body.String())
+}
+
+func TestWriteHandlerAlreadyExistsSpecificDirectoryReturnsNotModified(t *testing.T) {
+	log := logger.NewUPPLogger("handlers_test", "Debug")
+	r := mux.NewRouter()
+	mw := &mockWriter{writeStatus: UNCHANGED}
+	mr := &mockReader{log: log}
+	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequestWithPathParameter("PUT", withExpectedResourcePath("/89d15f70-640d-11e4-9803-0800200c9a66"), "PAYLOAD", "testDirectory"))
 
 	assert.Equal(t, 304, rec.Code)
 	assert.Equal(t, "PAYLOAD", mw.payload)
@@ -156,6 +206,20 @@ func TestWriterHandlerDeleteReturnsOK(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("DELETE", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), ""))
+	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
+	assert.Equal(t, 204, rec.Code)
+	assert.Empty(t, rec.Body.String())
+}
+
+func TestWriterHandlerDeleteSpecificDirectoryReturnsOK(t *testing.T) {
+	log := logger.NewUPPLogger("handlers_test", "Debug")
+	r := mux.NewRouter()
+	mw := &mockWriter{}
+	mr := &mockReader{log: log}
+	Handlers(r, NewWriterHandler(mw, mr, log), ReaderHandler{}, ExpectedResourcePath)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, newRequestWithPathParameter("DELETE", withExpectedResourcePath("/22f53313-85c6-46b2-94e7-cfde9322f26c"), "", "testDirectory"))
 	assert.Equal(t, "22f53313-85c6-46b2-94e7-cfde9322f26c", mw.uuid)
 	assert.Equal(t, 204, rec.Code)
 	assert.Empty(t, rec.Body.String())
@@ -264,7 +328,6 @@ func TestHandleGetAllFailsReturnsServiceUnavailable(t *testing.T) {
 }
 
 func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string, expectedStatus int, expectedBody string, expectedContentType string) *httptest.ResponseRecorder {
-
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, newRequest("GET", url, ""))
 	assert.Equal(t, expectedStatus, rec.Code)
@@ -279,7 +342,6 @@ func assertRequestAndResponseFromRouter(t testing.TB, r *mux.Router, url string,
 }
 
 func assertRequestAndResponse(t testing.TB, url string, expectedStatus int, expectedBody string) *httptest.ResponseRecorder {
-
 	rec := httptest.NewRecorder()
 	http.DefaultServeMux.ServeHTTP(rec, newRequest("GET", url, ""))
 	assert.Equal(t, expectedStatus, rec.Code)
@@ -313,6 +375,24 @@ func newRequestBodyFail(method, url string) *http.Request {
 	return req
 }
 
+func newRequestWithPathParameter(method, url string, body string, path string) *http.Request {
+	var payload io.Reader
+	if body != "" {
+		payload = bytes.NewReader([]byte(body))
+	}
+	req, err := http.NewRequest(method, url, payload)
+	values := req.URL.Query()
+	values.Set("path", path)
+	req.URL.RawQuery = values.Encode()
+	req.Header = map[string][]string{
+		"Content-Type": {ExpectedContentType},
+	}
+	if err != nil {
+		panic(err)
+	}
+	return req
+}
+
 func newRequest(method, url string, body string) *http.Request {
 	var payload io.Reader
 	if body != "" {
@@ -339,7 +419,7 @@ type mockReader struct {
 	log         *logger.UPPLogger
 }
 
-func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
+func (r *mockReader) Get(uuid string, path string) (bool, io.ReadCloser, *string, error) {
 	r.Lock()
 	defer r.Unlock()
 	r.log.Infof("Got request for uuid: %v", uuid)
@@ -347,7 +427,7 @@ func (r *mockReader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
 	var body io.ReadCloser
 
 	if r.payload != "" {
-		body = ioutil.NopCloser(strings.NewReader(r.payload))
+		body = io.NopCloser(strings.NewReader(r.payload))
 	}
 
 	if r.rc != nil {
@@ -374,7 +454,7 @@ func (r *mockReader) processPipe() (io.PipeReader, error) {
 	return *pv, r.returnError
 }
 
-func (r *mockReader) GetAll() (io.PipeReader, error) {
+func (r *mockReader) GetAll(path string) (io.PipeReader, error) {
 	return r.processPipe()
 }
 
@@ -393,7 +473,7 @@ type mockWriter struct {
 	writeStatus status
 }
 
-func (mw *mockWriter) Delete(uuid string, tid string) error {
+func (mw *mockWriter) Delete(uuid string, path string, tid string) error {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
@@ -403,7 +483,7 @@ func (mw *mockWriter) Delete(uuid string, tid string) error {
 	return mw.deleteError
 }
 
-func (mw *mockWriter) Write(uuid string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
+func (mw *mockWriter) Write(uuid string, path string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.uuid = uuid
