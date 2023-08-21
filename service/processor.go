@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,7 +68,7 @@ func (r *S3QProcessor) ProcessMsg(m kafka.FTMessage) {
 		uuid = m.Headers["Message-Id"]
 	}
 
-	writeStatus, err := r.Write(uuid, &b, ct, tid, false)
+	writeStatus, err := r.Write(uuid, "", &b, ct, tid, false)
 	if err != nil {
 		r.log.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Failed to write")
 		return
@@ -91,10 +90,10 @@ func (r *S3QProcessor) ProcessMsg(m kafka.FTMessage) {
 }
 
 type Reader interface {
-	Get(uuid string) (bool, io.ReadCloser, *string, error)
+	Get(uuid string, path string) (bool, io.ReadCloser, *string, error)
 	Count() (int64, error)
 	Ids() (io.PipeReader, error)
-	GetAll() (io.PipeReader, error)
+	GetAll(path string) (io.PipeReader, error)
 }
 
 func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string, workers int16, log *logger.UPPLogger) Reader {
@@ -115,10 +114,10 @@ type S3Reader struct {
 	log          *logger.UPPLogger
 }
 
-func (r *S3Reader) Get(uuid string) (bool, io.ReadCloser, *string, error) {
+func (r *S3Reader) Get(uuid string, path string) (bool, io.ReadCloser, *string, error) {
 	params := &s3.GetObjectInput{
-		Bucket: aws.String(r.bucketName),                 // Required
-		Key:    aws.String(getKey(r.bucketPrefix, uuid)), // Required
+		Bucket: aws.String(r.bucketName),                       // Required
+		Key:    aws.String(getKey(r.bucketPrefix, path, uuid)), // Required
 	}
 	resp, err := r.svc.GetObject(params)
 
@@ -180,7 +179,7 @@ func (r *S3Reader) getListObjectsV2Input() *s3.ListObjectsV2Input {
 	}
 }
 
-func (r *S3Reader) GetAll() (io.PipeReader, error) {
+func (r *S3Reader) GetAll(path string) (io.PipeReader, error) {
 	err := r.checkListOk()
 	pv, pw := io.Pipe()
 	if err != nil {
@@ -196,7 +195,7 @@ func (r *S3Reader) GetAll() (io.PipeReader, error) {
 	tw := int(r.workers)
 	for w := 0; w < tw; w++ {
 		wg.Add(1)
-		go r.getItemWorker(w, &wg, keys, items)
+		go r.getItemWorker(w, path, &wg, keys, items)
 	}
 
 	go r.listObjects(keys)
@@ -209,10 +208,10 @@ func (r *S3Reader) GetAll() (io.PipeReader, error) {
 	return *pv, err
 }
 
-func (r *S3Reader) getItemWorker(w int, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
+func (r *S3Reader) getItemWorker(w int, path string, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
 	defer wg.Done()
 	for uuid := range keys {
-		if found, i, _, _ := r.Get(*uuid); found {
+		if found, i, _, _ := r.Get(*uuid, path); found {
 			items <- &i
 		}
 	}
@@ -294,8 +293,8 @@ func (r *S3Reader) listObjects(keys chan<- *string) error {
 }
 
 type Writer interface {
-	Write(uuid string, b *[]byte, contentType string, transactionId string, ignoreHash bool) (status, error)
-	Delete(uuid string, transactionId string) error
+	Write(uuid string, path string, b *[]byte, contentType string, transactionId string, ignoreHash bool) (status, error)
+	Delete(uuid string, path string, transactionId string) error
 }
 
 type S3Writer struct {
@@ -316,14 +315,18 @@ func NewS3Writer(svc s3iface.S3API, bucketName string, bucketPrefix string, only
 	}
 }
 
-func getKey(bucketPrefix string, uuid string) string {
+func getKey(bucketPrefix string, path string, uuid string) string {
+	if bucketPrefix == "" && path != "" {
+		return path + "/" + strings.Replace(uuid, "-", "/", -1)
+	}
+
 	return bucketPrefix + "/" + strings.Replace(uuid, "-", "/", -1)
 }
 
-func (w *S3Writer) Delete(uuid string, tid string) error {
+func (w *S3Writer) Delete(uuid string, path string, tid string) error {
 	params := &s3.DeleteObjectInput{
-		Bucket: aws.String(w.bucketName),                 // Required
-		Key:    aws.String(getKey(w.bucketPrefix, uuid)), // Required
+		Bucket: aws.String(w.bucketName),                       // Required
+		Key:    aws.String(getKey(w.bucketPrefix, path, uuid)), // Required
 	}
 
 	if resp, err := w.svc.DeleteObject(params); err != nil {
@@ -333,10 +336,10 @@ func (w *S3Writer) Delete(uuid string, tid string) error {
 	return nil
 }
 
-func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
+func (w *S3Writer) Write(uuid string, path string, b *[]byte, ct string, tid string, ignoreHash bool) (status, error) {
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(w.bucketName),
-		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
+		Key:    aws.String(getKey(w.bucketPrefix, path, uuid)),
 		Body:   bytes.NewReader(*b),
 	}
 
@@ -349,7 +352,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHa
 	}
 	params.Metadata[transactionid.TransactionIDKey] = &tid
 
-	status, newHash, err := w.compareObjectToStore(uuid, b, tid)
+	status, newHash, err := w.compareObjectToStore(uuid, path, b, tid)
 	if err != nil {
 		return status, err
 	} else if w.onlyUpdatesEnabled && !ignoreHash && status == UNCHANGED {
@@ -372,7 +375,7 @@ func (w *S3Writer) Write(uuid string, b *[]byte, ct string, tid string, ignoreHa
 	return status, nil
 }
 
-func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (status, uint64, error) {
+func (w *S3Writer) compareObjectToStore(uuid string, path string, b *[]byte, tid string) (status, uint64, error) {
 	objectHash, err := hashstructure.Hash(&b, nil)
 	if err != nil {
 		w.log.WithError(err).WithTransactionID(tid).WithUUID(uuid).Errorf("Error whilst hashing payload: %v", &b)
@@ -381,7 +384,7 @@ func (w *S3Writer) compareObjectToStore(uuid string, b *[]byte, tid string) (sta
 
 	hoi := &s3.HeadObjectInput{
 		Bucket: aws.String(w.bucketName),
-		Key:    aws.String(getKey(w.bucketPrefix, uuid)),
+		Key:    aws.String(getKey(w.bucketPrefix, path, uuid)),
 	}
 	hoo, err := w.svc.HeadObject(hoi)
 	if err != nil {
@@ -432,10 +435,11 @@ func NewWriterHandler(writer Writer, reader Reader, log *logger.UPPLogger) Write
 
 func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
+	path := r.URL.Query().Get("path")
 	uuid := uuid(r.URL.Path)
 	rw.Header().Set("Content-Type", "application/json")
 	var err error
-	bs, err := ioutil.ReadAll(r.Body)
+	bs, err := io.ReadAll(r.Body)
 	if err != nil {
 		writerStatusInternalServerError(uuid, err, rw, tid, w.log)
 		return
@@ -443,7 +447,7 @@ func (w *WriterHandler) HandleWrite(rw http.ResponseWriter, r *http.Request) {
 
 	ignoreHash, _ := strconv.ParseBool(r.Header.Get("X-Ignore-Hash"))
 	ct := r.Header.Get("Content-Type")
-	writeStatus, _ := w.writer.Write(uuid, &bs, ct, tid, ignoreHash)
+	writeStatus, _ := w.writer.Write(uuid, path, &bs, ct, tid, ignoreHash)
 
 	switch writeStatus {
 	case INTERNAL_ERROR:
@@ -482,8 +486,9 @@ func writerStatusInternalServerError(uuid string, err error, rw http.ResponseWri
 
 func (w *WriterHandler) HandleDelete(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
+	path := r.URL.Query().Get("path")
 	uuid := uuid(r.URL.Path)
-	if err := w.writer.Delete(uuid, tid); err != nil {
+	if err := w.writer.Delete(uuid, path, tid); err != nil {
 		rw.Header().Set("Content-Type", "application/json")
 		writerServiceUnavailable(uuid, err, rw, tid, w.log)
 		return
@@ -534,7 +539,8 @@ func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
 
 func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
-	pv, err := rh.reader.GetAll()
+	path := r.URL.Query().Get("path")
+	pv, err := rh.reader.GetAll(path)
 
 	if err != nil {
 		readerServiceUnavailable(r.URL.RequestURI(), err, rw, tid, rh.log)
@@ -548,8 +554,9 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 	tid := transactionid.GetTransactionIDFromRequest(r)
+	path := r.URL.Query().Get("path")
 	uuid := uuid(r.URL.Path)
-	f, i, ct, err := rh.reader.Get(uuid)
+	f, i, ct, err := rh.reader.Get(uuid, path)
 	if err != nil {
 		readerServiceUnavailable(r.URL.RequestURI(), err, rw, tid, rh.log)
 		return
@@ -561,7 +568,7 @@ func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, err := ioutil.ReadAll(i)
+	b, err := io.ReadAll(i)
 	if err != nil {
 		rh.log.WithError(err).WithTransactionID(tid).WithUUID(uuid).Error("Error reading body")
 		rw.Header().Set("Content-Type", "application/json")
