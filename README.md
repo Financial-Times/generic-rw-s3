@@ -78,7 +78,7 @@ For complete API specification see [S3 Read/Write API Endpoint](https://docs.goo
 Any payload can be written via the PUT using a unique UUID to identify this payload within the S3 bucket
 
 ```sh
-curl -H 'Content-Type: application/json' -X PUT -d '{"tags":["tag1","tag2"],"question":"Which band?","answers":[{"id":"a0","answer":"Answer1"},{"id":"a1","answer":"answer2"}]}' http://localhost:8080/bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9
+curl -H 'Content-Type: application/json' -X PUT -d '{"tags":["tag1","tag2"],"question":"Which band?","answers":[{"id":"a0","answer":"Answer1"},{"id":"a1","answer":"answer2"}]}' http://localhost:8080/123e4567-e89b-12d3-a456-426655440000
 ```
 
 The `Content-Type` is important as that will be what the file will be stored as.
@@ -90,6 +90,17 @@ The reason we do this is so that it becomes easier to manage/browser for content
 It is also good practice to do this as it means that files get put into different partitions.
 This is important if you're writing and pulling content from S3 as it means that content will get written/read from different partitions on S3.
 
+If `bucket_prefix` is present, concepts will always be written in the following format `<bucket_prefix>/123e4567/e89b/12d3/a456/426655440000`.
+
+However if `bucket_prefix` is not present, there is additional `path` parameter functionality for writing/reading concepts to/from a specific partition. A sample request would look like:
+
+```sh
+curl -H 'Content-Type: application/json' -X PUT -d '{"tags":["tag1","tag2"],"question":"Which band?","answers":[{"id":"a0","answer":"Answer1"},{"id":"a1","answer":"answer2"}]}' http://localhost:8080/123e4567-e89b-12d3-a456-426655440000?path=TestDirectory
+```
+
+when the parameter is present and the content is uploaded, the key generated for the item is converted from
+`123e4567-e89b-12d3-a456-426655440000` to `TestDirectory/123e4567/e89b/12d3/a456/426655440000`.
+
 ### GET /UUID
 
 This internal read should return what was written to S3
@@ -100,7 +111,19 @@ If not found, you'll get a 404 response.
 curl http://localhost:8080/bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9
 ```
 
+Getting what was written in specific directory
+
+```sh
+curl http://localhost:8080/bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9?path=TestDirectory
+```
+
 ### DELETE /UUID
+
+To delete something from specific directory the `path` parameter should be appended to the request as follows:
+
+```sh
+curl .../bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9?path=TestDirectory
+```
 
 Will return 204
 
@@ -109,6 +132,12 @@ Will return 204
 ### GET /
 
 Streams all payloads in a given bucket
+
+To stream the payload a specific directory the `path` parameter should be appended to the request as follows:
+
+```sh
+curl .../bcac6326-dd23-4b6a-9dfa-c2fbeb9737d9?path=TestDirectory
+```
 
 ### GET /__ids
 
@@ -126,6 +155,17 @@ The return payload will look like:
 {"ID":"c9f5337d-0435-477e-b0f5-bd35ff3a4b48"}
 {"ID":"7f84a70b-7085-4309-aa8e-304b3759f49f"}
 {"ID":"99a0537a-3635-479b-92f7-ba10b63e2f87"}
+...
+```
+
+If there were concepts also in a directory `TestDirectory` the payload will look like:
+
+```sh
+{"ID":"dcfa65d6-3849-445e-ac6a-15bc5a17e954"}
+{"ID":"2136f8ad-e94e-45cb-b616-336f38533214"}
+{"ID":"c9f5337d-0435-477e-b0f5-bd35ff3a4b48"}
+{"ID":"TestDirectory-7f84a70b-7085-4309-aa8e-304b3759f49f"}
+{"ID":"TestDirectory-99a0537a-3635-479b-92f7-ba10b63e2f87"}
 ...
 ```
 
