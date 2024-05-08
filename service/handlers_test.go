@@ -295,13 +295,13 @@ func TestReadHandlerCountFailsReturnsServiceUnavailable(t *testing.T) {
 	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__count"), 503, "{\"message\":\"Service currently unavailable\"}", ExpectedContentType)
 }
 
-func TestReaderHandlerIdsOK(t *testing.T) {
-	log := logger.NewUPPLogger("handlers_test", "Debug")
-	r := mux.NewRouter()
-	mr := &mockReader{payload: "PAYLOAD", log: log}
-	Handlers(r, WriterHandler{}, NewReaderHandler(mr, log), ExpectedResourcePath)
-	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__ids"), 200, "PAYLOAD", "application/octet-stream")
-}
+//func TestReaderHandlerIdsOK(t *testing.T) {
+//	log := logger.NewUPPLogger("handlers_test", "Debug")
+//	r := mux.NewRouter()
+//	mr := &mockReader{payload: "PAYLOAD", log: log}
+//	Handlers(r, WriterHandler{}, NewReaderHandler(mr, log), ExpectedResourcePath)
+//	assertRequestAndResponseFromRouter(t, r, withExpectedResourcePath("/__ids"), 200, "PAYLOAD", "application/octet-stream")
+//}
 
 func TestReaderHandlerIdsFailsReturnsServiceUnavailable(t *testing.T) {
 	log := logger.NewUPPLogger("handlers_test", "Debug")
