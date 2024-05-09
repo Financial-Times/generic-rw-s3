@@ -15,7 +15,7 @@ import (
 func AddAdminHandlers(servicesRouter *mux.Router, requestLoggingEnabled bool, log *logger.UPPLogger, hc *HealthCheck) {
 	var monitoringRouter http.Handler = servicesRouter
 	if requestLoggingEnabled {
-		monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log.Logger, monitoringRouter)
+		monitoringRouter = httphandlers.TransactionAwareRequestLoggingHandler(log, monitoringRouter)
 		monitoringRouter = httphandlers.HTTPMetricsHandler(metrics.DefaultRegistry, monitoringRouter)
 	}
 

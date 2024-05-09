@@ -8,7 +8,7 @@ require (
 	github.com/Financial-Times/http-handlers-go v1.0.0
 	github.com/Financial-Times/kafka-client-go/v3 v3.1.0
 	github.com/Financial-Times/service-status-go v0.3.0
-	github.com/Financial-Times/transactionid-utils-go v1.0.0
+	github.com/Financial-Times/transactionid-utils-go v0.2.0
 	github.com/aws/aws-sdk-go v1.52.5
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
@@ -21,7 +21,6 @@ require (
 require (
 	github.com/Shopify/sarama v1.38.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/eapache/go-resiliency v1.6.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
