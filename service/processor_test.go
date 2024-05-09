@@ -629,7 +629,7 @@ func TestGetIdsFromS3(t *testing.T) {
 	}
 	p, err := r.Ids()
 	assert.NoError(t, err)
-	payload, err := io.ReadAll(&p)
+	payload, err := io.ReadAll(p)
 	assert.NoError(t, err)
 	assert.Equal(t, `{"ID":"123e4567-e89b-12d3-a456-426655440001"}
 {"ID":"123e4567-e89b-12d3-a456-426655440002"}
@@ -672,7 +672,7 @@ func TestGetIdsFromS3NoPrefix(t *testing.T) {
 	}
 	p, err := r.Ids()
 	assert.NoError(t, err)
-	payload, err := io.ReadAll(&p)
+	payload, err := io.ReadAll(p)
 	assert.NoError(t, err)
 	assert.Equal(t, `{"ID":"123e4567-e89b-12d3-a456-426655440001"}
 {"ID":"123e4567-e89b-12d3-a456-426655440002"}
@@ -728,7 +728,7 @@ func TestReaderHandler_HandleGetAllOK(t *testing.T) {
 	}
 	p, err := r.GetAll("")
 	assert.NoError(t, err)
-	payload, err := io.ReadAll(&p)
+	payload, err := io.ReadAll(p)
 	assert.NoError(t, err)
 	assert.Equal(t, `PAYLOAD0
 PAYLOAD1
@@ -775,7 +775,7 @@ func TestReaderHandler_HandleGetAllOKSpecificDirectory(t *testing.T) {
 	}
 	p, err := r.GetAll("testDirectory")
 	assert.NoError(t, err)
-	payload, err := io.ReadAll(&p)
+	payload, err := io.ReadAll(p)
 	assert.NoError(t, err)
 	assert.Equal(t, `PAYLOAD0
 PAYLOAD1
@@ -805,7 +805,7 @@ func TestReaderHandler_HandleGetAllOKWithLotsOfWorkers(t *testing.T) {
 	}
 	p, err := r.GetAll("")
 	assert.NoError(t, err)
-	payload, err := io.ReadAll(&p)
+	payload, err := io.ReadAll(p)
 	assert.NoError(t, err)
 	assert.Equal(t, 25, strings.Count(string(payload[:]), "PAYLOAD"))
 }
