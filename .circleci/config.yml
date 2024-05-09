@@ -8,11 +8,8 @@ workflows:
     jobs:
       - ft-golang-ci/build-and-test:
           name: build-and-test-project
-
       - ft-golang-ci/docker-build:
           name: build-docker-image
-          requires:
-            - build-and-test-project
   snyk-scanning:
     jobs:
       - ft-golang-ci/scan:
