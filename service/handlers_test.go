@@ -443,7 +443,7 @@ func (r *mockReader) Count() (int64, error) {
 	return r.count, r.returnError
 }
 
-func (r *mockReader) processPipe() (io.PipeReader, error) {
+func (r *mockReader) processPipe() (*io.PipeReader, error) {
 	pv, pw := io.Pipe()
 	go func(p *io.PipeWriter) {
 		if r.payload != "" {
@@ -451,14 +451,14 @@ func (r *mockReader) processPipe() (io.PipeReader, error) {
 		}
 		p.Close()
 	}(pw)
-	return *pv, r.returnError
+	return pv, r.returnError
 }
 
-func (r *mockReader) GetAll(path string) (io.PipeReader, error) {
+func (r *mockReader) GetAll(path string) (*io.PipeReader, error) {
 	return r.processPipe()
 }
 
-func (r *mockReader) Ids() (io.PipeReader, error) {
+func (r *mockReader) Ids() (*io.PipeReader, error) {
 	return r.processPipe()
 }
 

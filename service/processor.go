@@ -92,8 +92,8 @@ func (r *S3QProcessor) ProcessMsg(m kafka.FTMessage) {
 type Reader interface {
 	Get(uuid string, path string) (bool, io.ReadCloser, *string, error)
 	Count() (int64, error)
-	Ids() (io.PipeReader, error)
-	GetAll(path string) (io.PipeReader, error)
+	Ids() (*io.PipeReader, error)
+	GetAll(path string) (*io.PipeReader, error)
 }
 
 func NewS3Reader(svc s3iface.S3API, bucketName string, bucketPrefix string, workers int16, log *logger.UPPLogger) Reader {
@@ -179,12 +179,12 @@ func (r *S3Reader) getListObjectsV2Input() *s3.ListObjectsV2Input {
 	}
 }
 
-func (r *S3Reader) GetAll(path string) (io.PipeReader, error) {
+func (r *S3Reader) GetAll(path string) (*io.PipeReader, error) {
 	err := r.checkListOk()
 	pv, pw := io.Pipe()
 	if err != nil {
 		pv.Close()
-		return *pv, err
+		return pv, err
 	}
 
 	itemSize := float32(r.workers) * 1.5
@@ -205,7 +205,7 @@ func (r *S3Reader) GetAll(path string) (io.PipeReader, error) {
 		close(i)
 	}(&wg, items)
 
-	return *pv, err
+	return pv, err
 }
 
 func (r *S3Reader) getItemWorker(path string, wg *sync.WaitGroup, keys <-chan *string, items chan<- *io.ReadCloser) {
@@ -228,13 +228,13 @@ func (r *S3Reader) processItems(items <-chan *io.ReadCloser, pw *io.PipeWriter) 
 	pw.Close()
 }
 
-func (r *S3Reader) Ids() (io.PipeReader, error) {
+func (r *S3Reader) Ids() (*io.PipeReader, error) {
 
 	err := r.checkListOk()
 	pv, pw := io.Pipe()
 	if err != nil {
 		pv.Close()
-		return *pv, err
+		return pv, err
 	}
 
 	go func(p *io.PipeWriter) {
@@ -257,7 +257,7 @@ func (r *S3Reader) Ids() (io.PipeReader, error) {
 			r.log.WithError(err).Error("Got an error reading content of bucket")
 		}
 	}(pw)
-	return *pv, err
+	return pv, err
 }
 
 func (r *S3Reader) checkListOk() (err error) {
@@ -518,7 +518,7 @@ func (rh *ReaderHandler) HandleIds(rw http.ResponseWriter, r *http.Request) {
 
 	rw.Header().Set("Content-Type", "application/octet-stream")
 	rw.WriteHeader(http.StatusOK)
-	io.Copy(rw, &pv)
+	io.Copy(rw, pv)
 }
 
 func (rh *ReaderHandler) HandleCount(rw http.ResponseWriter, r *http.Request) {
@@ -549,7 +549,7 @@ func (rh *ReaderHandler) HandleGetAll(rw http.ResponseWriter, r *http.Request) {
 
 	rw.Header().Set("Content-Type", "application/octet-stream")
 	rw.WriteHeader(http.StatusOK)
-	io.Copy(rw, &pv)
+	io.Copy(rw, pv)
 }
 
 func (rh *ReaderHandler) HandleGet(rw http.ResponseWriter, r *http.Request) {
