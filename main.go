@@ -86,6 +86,13 @@ func main() {
 		EnvVar: "KAFKA_ADDRESS",
 	})
 
+	kafkaClusterArn := app.String(cli.StringOpt{
+		Name:   "kafka_cluster_arn",
+		Value:  "",
+		Desc:   "Comma separated Kafka cluster ARN for consuming messages.",
+		EnvVar: "KAFKA_CLUSTER_ARN",
+	})
+
 	consumerLagTolerance := app.Int(cli.IntOpt{
 		Name:   "consumer-lag-tolerance",
 		Value:  120,
@@ -131,6 +138,7 @@ func main() {
 
 	app.Action = func() {
 		consumerConfig := kafka.ConsumerConfig{
+			ClusterArn:              kafkaClusterArn,
 			BrokersConnectionString: *kafkaAddress,
 			ConsumerGroup:           *consumerGroup,
 			Options:                 kafka.DefaultConsumerOptions(),
