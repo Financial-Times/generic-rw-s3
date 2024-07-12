@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 
 	"github.com/Financial-Times/go-logger/v2"
-	"github.com/Financial-Times/kafka-client-go/v3"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -54,7 +53,10 @@ func TestNewHealthCheck(t *testing.T) {
 	s := &mockS3Client{log: log}
 
 	healthcheck := NewHealthCheck(
-		kafka.NewConsumer(kafka.ConsumerConfig{}, []*kafka.Topic{kafka.NewTopic("test")}, log),
+		&mockConsumerInstance{
+			isConnectionHealthy: true,
+			isNotLagging:        true,
+		},
 		s, "generic-rw-s3", "generic-rw-s3", "bucketName", log,
 	)
 	assert.NotNil(t, healthcheck.consumer)
