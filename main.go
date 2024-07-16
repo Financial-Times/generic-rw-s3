@@ -8,7 +8,7 @@ import (
 
 	"github.com/Financial-Times/generic-rw-s3/service"
 	"github.com/Financial-Times/go-logger/v2"
-	"github.com/Financial-Times/kafka-client-go/v3"
+	"github.com/Financial-Times/kafka-client-go/v4"
 	"github.com/aws/aws-sdk-go/aws"
 	credentials "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -86,6 +86,13 @@ func main() {
 		EnvVar: "KAFKA_ADDRESS",
 	})
 
+	kafkaClusterArn := app.String(cli.StringOpt{
+		Name:   "kafka_cluster_arn",
+		Value:  "",
+		Desc:   "Comma separated Kafka cluster ARN for consuming messages.",
+		EnvVar: "KAFKA_CLUSTER_ARN",
+	})
+
 	consumerLagTolerance := app.Int(cli.IntOpt{
 		Name:   "consumer-lag-tolerance",
 		Value:  120,
@@ -131,9 +138,10 @@ func main() {
 
 	app.Action = func() {
 		consumerConfig := kafka.ConsumerConfig{
+			ClusterArn:              kafkaClusterArn,
 			BrokersConnectionString: *kafkaAddress,
 			ConsumerGroup:           *consumerGroup,
-			ConnectionRetryInterval: time.Minute,
+			Options:                 kafka.DefaultConsumerOptions(),
 		}
 		runServer(*appName, *port, *appSystemCode, *resourcePath, *awsRegion, *bucketName, *bucketPrefix, *wrkSize, *consumerTopic, consumerLagTolerance, consumerConfig, *onlyUpdatesEnabled, *requestLoggingEnabled, log)
 	}
@@ -204,8 +212,10 @@ func runServer(appName string, port string, appSystemCode string, resourcePath s
 	if readTopic != "" {
 		qp := service.NewQProcessor(w, log)
 		topics := []*kafka.Topic{kafka.NewTopic(readTopic, kafka.WithLagTolerance(int64(*consumerLagTolerance)))}
-		consumer = kafka.NewConsumer(qConf, topics, log)
-
+		consumer, err = kafka.NewConsumer(qConf, topics, log)
+		if err != nil {
+			log.WithError(err).Fatalf("could not create Kafka consumer for %s and topic %s", qConf.BrokersConnectionString, readTopic)
+		}
 		go consumer.Start(qp.ProcessMsg)
 		defer consumer.Close()
 	}

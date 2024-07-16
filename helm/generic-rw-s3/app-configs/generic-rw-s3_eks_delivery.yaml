@@ -13,6 +13,11 @@ env:
       configMapKeyRef:
         name: global-config
         key: msk.kafka.broker.url
+  - name: KAFKA_CLUSTER_ARN
+    valueFrom:
+      configMapKeyRef:
+        name: global-config
+        key: msk.kafka.cluster.arn
   - name: CONSUMER_GROUP
     value: generic-rw-s3
   - name: CONSUMER_TOPIC
